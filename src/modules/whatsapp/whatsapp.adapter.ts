@@ -1,14 +1,17 @@
-export interface WhatsAppMessage {
+import { Injectable } from '@nestjs/common';
+
+export interface WhatsappMessage {
   to: string;
   body: string;
 }
 
-export interface WhatsAppAdapter {
-  sendMessage(message: WhatsAppMessage): Promise<{ queued: boolean; provider: string }>;
+export interface WhatsappAdapter {
+  sendMessage(message: WhatsappMessage): Promise<{ queued: boolean; provider: string }>;
 }
 
-export class StubWhatsAppAdapter implements WhatsAppAdapter {
-  async sendMessage(_message: WhatsAppMessage): Promise<{ queued: boolean; provider: string }> {
+@Injectable()
+export class StubWhatsappAdapter implements WhatsappAdapter {
+  async sendMessage(_message: WhatsappMessage): Promise<{ queued: boolean; provider: string }> {
     return { queued: false, provider: 'stub' };
   }
 }

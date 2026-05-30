@@ -1,3 +1,5 @@
+import { Injectable } from '@nestjs/common';
+
 export interface GarminConnectionStatus {
   provider: 'garmin';
   connected: boolean;
@@ -9,6 +11,7 @@ export interface GarminAdapter {
   getAuthorizationUrl(userId: string): Promise<string>;
 }
 
+@Injectable()
 export class StubGarminAdapter implements GarminAdapter {
   async getConnectionStatus(_userId: string): Promise<GarminConnectionStatus> {
     return { provider: 'garmin', connected: false, status: 'stub' };

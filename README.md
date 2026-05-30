@@ -6,7 +6,7 @@ Backend inicial do MVP v1 do iTrain Healthy: web + Garmin + WhatsApp.
 
 - Node.js 20+
 - TypeScript
-- Express
+- NestJS
 - Prisma
 - PostgreSQL
 
@@ -25,10 +25,17 @@ Health check:
 curl http://localhost:3000/health
 ```
 
+Resposta esperada:
+
+```json
+{ "status": "ok", "service": "itrainhealthy-api" }
+```
+
 ## Scripts
 
-- `npm run dev` — servidor em modo watch
-- `npm run build` — compila TypeScript para `dist/`
+- `npm run dev` / `npm run start:dev` — servidor NestJS em modo watch
+- `npm run build` — compila a aplicação NestJS para `dist/`
+- `npm run start` — executa `dist/main.js`
 - `npm run lint` — executa ESLint
 - `npm run prisma:generate` — gera Prisma Client
 - `npm run prisma:migrate` — cria/aplica migration local
@@ -38,7 +45,11 @@ curl http://localhost:3000/health
 
 ```text
 src/
+  app.module.ts       # módulo raiz NestJS
+  main.ts             # bootstrap HTTP, CORS, helmet e ValidationPipe
   config/             # env e configurações
+  health/             # GET /health
+  prisma/             # PrismaModule e PrismaService
   modules/            # módulos de domínio/API
     auth/
     users/
@@ -47,7 +58,6 @@ src/
     garmin/
     whatsapp/
     readiness/
-  shared/             # HTTP, Prisma e utilitários compartilhados
 prisma/schema.prisma  # schema inicial PostgreSQL
 ```
 
@@ -65,7 +75,7 @@ prisma/schema.prisma  # schema inicial PostgreSQL
 
 ## Integrações externas
 
-Garmin OAuth real e WhatsApp real ainda **não** estão implementados neste scaffold. Existem interfaces/adapters stubs para manter o contrato e permitir evolução segura.
+Garmin OAuth real e WhatsApp real ainda **não** estão implementados neste scaffold. Existem adapters stubs injetáveis via módulos NestJS para manter o contrato e permitir evolução segura.
 
 Variáveis planejadas:
 

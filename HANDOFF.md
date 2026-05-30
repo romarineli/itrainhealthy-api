@@ -1,29 +1,30 @@
 # HANDOFF — iTrain Healthy
 
 ## Status atual
-- Branch ativa: backend `main` (primeiro commit local do scaffold MVP preparado nesta sessão), frontend `main` (primeiro commit local do scaffold MVP preparado nesta sessão).
+- Branch ativa: backend `tandy/migrate-backend-scaffold-nestjs`.
 - Última sessão: 2026-05-30
 
 ## O que foi feito
 - Lido o contexto histórico deste `HANDOFF.md` antes de executar o escopo.
-- Confirmado roteamento do projeto iTrain Healthy:
+- Confirmado projeto iTrain Healthy:
   - Backend/API: `/Users/irene/projects/itrainhealthy-api`
-  - Frontend/Web: `/Users/irene/projects/itrainhealthy`
+  - Frontend/Web: `/Users/irene/projects/itrainhealthy` (não alterado nesta sessão)
   - Handoff: `/Users/irene/projects/itrainhealthy-api/HANDOFF.md`
-- Criado scaffold inicial do backend em Node.js + TypeScript + Express + Prisma + PostgreSQL.
-- Criada estrutura modular backend para `auth`, `users`, `profile`, `consents`, `garmin`, `whatsapp` e `readiness`.
-- Criado `GET /health` e endpoints stubs iniciais sob `/api/*` para manter contrato mínimo do MVP.
-- Criado `prisma/schema.prisma` inicial com modelos `User`, `Profile`, `Consent`, `Integration` e `ReadinessSnapshot`.
-- Criadas interfaces/adapters stubs para Garmin e WhatsApp, sem OAuth Garmin real e sem envio WhatsApp real.
-- Criados `package.json`, `tsconfig.json`, `eslint.config.js`, `.gitignore`, `.env.example` e `README.md` no backend.
-- Criado scaffold inicial do frontend em Vite + React + TypeScript.
-- Criada tela inicial do dashboard MVP com placeholders para status Garmin, score de prontidão, status WhatsApp e CTA de conectar Garmin.
-- Criados `package.json`, configurações TypeScript/Vite/ESLint, `.gitignore`, `.env.example` e `README.md` no frontend.
-- Instaladas dependências com `npm install` nos dois repositórios, gerando `package-lock.json`.
-- Validações executadas:
-  - Backend: `npm run prisma:generate`, `npm run lint`, `npm run build` — sucesso.
-  - Frontend: `npm run lint`, `npm run build` — sucesso após adicionar `src/vite-env.d.ts`.
-- Não foram adicionados tokens ou segredos; `.env` permanece ignorado.
+- Criada branch local `tandy/migrate-backend-scaffold-nestjs` a partir de `main` para evitar commit direto na branch base.
+- Migrado o scaffold inicial do backend de Express para NestJS, mantendo Node.js + TypeScript + Prisma + PostgreSQL.
+- Criada estrutura NestJS idiomática com `AppModule`, `main.ts`, `HealthModule/HealthController`, módulos `auth`, `users`, `profile`, `consents`, `garmin`, `whatsapp` e `readiness`.
+- Implementado `GET /health` via controller NestJS, retornando `{ status: "ok", service: "itrainhealthy-api" }`.
+- Criado `PrismaModule` global e `PrismaService` injetável. O serviço não força conexão no bootstrap para permitir health check sem banco local ativo; a conexão acontecerá quando operações Prisma reais forem usadas.
+- Preservado `prisma/schema.prisma` inicial com modelos `User`, `Profile`, `Consent`, `Integration` e `ReadinessSnapshot`.
+- Atualizados `package.json`, `package-lock.json`, `tsconfig.json`, `nest-cli.json`, `README.md` e ESLint config para NestJS.
+- Mantidos adapters stubs para Garmin e WhatsApp, agora como providers injetáveis NestJS.
+- Executadas validações:
+  - `npm install` — sucesso; após atualização para NestJS 11, `npm audit --omit=dev` retornou 0 vulnerabilidades.
+  - `npm run prisma:generate` — sucesso.
+  - `npm run lint` — sucesso.
+  - `npm run build` — sucesso.
+  - `DATABASE_URL='postgresql://postgres:postgres@localhost:5432/itrainhealthy?schema=public' npm run start` + `curl http://localhost:3000/health` — sucesso para health check.
+- Não foram adicionados tokens ou segredos; `.env` permanece ignorado e somente `.env.example` contém placeholders.
 
 ## Pendente / próximos passos
 - Implementar autenticação real e sessão/usuário atual além dos stubs de MVP.
@@ -34,19 +35,17 @@
 - Conectar frontend aos endpoints reais quando contratos deixarem de ser stubs.
 - Adicionar testes automatizados (unitários/integrados) quando os fluxos reais forem implementados.
 - Criar migrations Prisma reais com banco PostgreSQL disponível (`npm run prisma:migrate`).
-- Fazer push/PR quando autorizado; nesta sessão foi solicitado sem push.
+- Fazer push/PR quando autorizado; nesta sessão foi solicitado explicitamente não fazer push.
 
 ## Decisões tomadas
-- Usar Express no backend: scaffold enxuto e compatível com APIs REST modulares do MVP.
-- Manter Garmin e WhatsApp como adapters stubs: evita falsa integração e deixa pontos de extensão claros para provedores reais.
-- Usar Prisma com PostgreSQL desde o início: atende stack alvo e prepara migrations/contratos persistentes.
-- Não implementar admin neste momento: Rodrigo confirmou MVP v1 sem admin.
-- Criar dashboard estático com placeholders no frontend: permite evolução visual e integração progressiva sem bloquear no backend real.
-- Usar `.env.example` sem valores sensíveis e `.gitignore` protegendo `.env*`: reduz risco de vazamento de segredos.
+- Backend oficial do projeto será NestJS + Prisma + PostgreSQL: Rodrigo questionou corretamente o scaffold Express; o scaffold Express anterior foi corrigido para arquitetura NestJS modular.
+- Usar NestJS 11: evita vulnerabilidades conhecidas reportadas pelo `npm audit` em versões anteriores do ecossistema NestJS/Express transitivo.
+- Não conectar Prisma no bootstrap: mantém `GET /health` disponível mesmo quando o PostgreSQL local não está rodando, sem impedir configuração do Prisma para uso real.
+- Manter Garmin e WhatsApp como adapters stubs injetáveis: evita falsa integração e deixa pontos de extensão claros para provedores reais.
+- Não alterar frontend: o contrato HTTP público inicial foi preservado, então não houve necessidade de ajuste no frontend.
 
 ## Riscos e bloqueios conhecidos
 - Endpoints de auth/users/profile/consents/readiness ainda retornam dados stubs; não há segurança, multiusuário real ou autorização.
 - Tokens Garmin/WhatsApp no schema estão apenas como campos planejados; antes de produção precisam criptografia em repouso e política de rotação.
-- Não há banco PostgreSQL/migrations aplicadas nesta sessão; apenas `prisma generate` foi validado.
-- `gh repo view` havia falhado em sessão anterior apesar de `git ls-remote` funcionar; push/PR pode exigir nova validação de credenciais.
-- Repositórios continuam sem push remoto nesta sessão conforme orientação de não fazer push direto.
+- Não há banco PostgreSQL/migrations aplicadas nesta sessão; apenas `prisma generate` e bootstrap/health sem query real foram validados.
+- Repositório local indica remoto `origin/main` como `[gone]`; push/PR exigirá nova validação do remoto/credenciais quando autorizado.
