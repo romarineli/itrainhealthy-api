@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ConsentType {
+  TERMS_OF_USE
+  PRIVACY_POLICY
+  GARMIN_DATA
+  WHATSAPP_MESSAGES
+}
+
+enum IntegrationStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  ERROR
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  profile      Profile?
+  consents     Consent[]
+  integrations Integration[]
+}
+
+model Profile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  birthDate DateTime?
+  timezone  String   @default("America/Sao_Paulo")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Consent {
+  id        String      @id @default(cuid())
+  userId    String
+  type      ConsentType
+  version   String
+  accepted  Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, version])
+}
+
+model Integration {
+  id           String            @id @default(cuid())
+  userId       String
+  provider     String
+  status       IntegrationStatus @default(DISCONNECTED)
+  externalId   String?
+  accessToken  String?           // Store encrypted before enabling real providers.
+  refreshToken String?           // Store encrypted before enabling real providers.
+  connectedAt  DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+}
+
+model ReadinessSnapshot {
+  id        String   @id @default(cuid())
+  userId    String
+  score     Int
+  summary   String?
+  source    String   @default("stub")
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}

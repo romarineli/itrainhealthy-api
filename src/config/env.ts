@@ -1,0 +1,17 @@
+import 'dotenv/config';
+import { z } from 'zod';
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  PORT: z.coerce.number().int().positive().default(3000),
+  DATABASE_URL: z.string().min(1),
+  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  GARMIN_CLIENT_ID: z.string().optional().default(''),
+  GARMIN_CLIENT_SECRET: z.string().optional().default(''),
+  GARMIN_REDIRECT_URI: z.string().url().optional(),
+  WHATSAPP_PROVIDER: z.string().default('stub'),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional().default(''),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional().default(''),
+});
+
+export const env = envSchema.parse(process.env);
