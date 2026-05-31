@@ -89,8 +89,9 @@ Fluxo disponível:
    - No MVP, o start OAuth cria/garante um usuário placeholder para permitir o FK do Prisma até existir auth real.
    - TODO controlado: substituir por subject autenticado via middleware/JWT e remover criação temporária.
 3. Inicie OAuth em `GET /api/garmin/authorize/start`.
-4. A Garmin deve redirecionar para `GET /api/garmin/callback?code=...&state=...`.
-5. Execute sync manual inicial de até 90 dias por padrão: `POST /api/garmin/sync`.
+4. A Garmin deve redirecionar para o backend em `GET /api/garmin/callback?code=...&state=...` para troca segura do code por tokens.
+5. Após processar o callback, o backend redireciona o navegador para o frontend em `GARMIN_SUCCESS_REDIRECT_URL` ou `GARMIN_ERROR_REDIRECT_URL`, sem expor `code`, `state` ou tokens. Para teste/API, envie `Accept: application/json` ou `?format=json` para receber JSON.
+6. Execute sync manual inicial de até 90 dias por padrão: `POST /api/garmin/sync`.
 
 Variáveis Garmin:
 
@@ -100,6 +101,8 @@ Variáveis Garmin:
 - `GARMIN_AUTHORIZATION_URL` — endpoint OAuth 2.0 PKCE de autorização (`https://connect.garmin.com/oauth2Confirm`).
 - `GARMIN_TOKEN_URL` — endpoint OAuth 2.0 PKCE de token (`https://connectapi.garmin.com/di-oauth2-service/oauth/token`).
 - `GARMIN_API_BASE_URL` — host das Wellness REST APIs (`https://apis.garmin.com`), não deve ser usado como endpoint de authorize.
+- `GARMIN_SUCCESS_REDIRECT_URL` — destino frontend após conexão concluída; default derivado de `FRONTEND_URL`/`APP_URL` + `/integrations/garmin/success`.
+- `GARMIN_ERROR_REDIRECT_URL` — destino frontend após falha no callback; default derivado de `FRONTEND_URL`/`APP_URL` + `/integrations/garmin/error`.
 - `GARMIN_STATE_SECRET` — segredo interno da aplicação para assinatura de `state` OAuth; não é fornecido pela Garmin.
 - `GARMIN_TOKEN_ENCRYPTION_KEY` — segredo interno da aplicação para criptografar tokens em repouso; não é fornecido pela Garmin e é obrigatório antes de produção.
 
@@ -112,6 +115,7 @@ Persistência Prisma criada:
 Pendências externas:
 
 - Confirmar no portal Garmin se o app está habilitado no ambiente correto (evaluation/sandbox ou production) para OAuth 2.0 PKCE e se o redirect URI bate exatamente com `GARMIN_REDIRECT_URI`.
+- Implementar/ajustar no frontend páginas ou fallback SPA para `/integrations/garmin/success` e `/integrations/garmin/error`, lendo query params seguros (`provider`, `status`, `message`).
 - Substituir os stubs seguros de coleta de dados por chamadas reais e mapeamentos validados.
 - Não há diagnóstico médico; os dados importados devem alimentar apenas features de bem-estar/prontidão definidas pelo produto.
 
