@@ -271,11 +271,9 @@ export class GarminService {
   }
 
   private async ensureTemporaryUserForMvp(userId: string): Promise<void> {
-    // TODO(auth): remove this non-production helper when real signup/auth owns user creation.
-    if (this.config.get<string>('NODE_ENV') === 'production') {
-      return;
-    }
-
+    // TODO(auth): remove this helper when real signup/auth owns user creation.
+    // The public MVP Garmin endpoint still receives a temporary userId, including in production demos.
+    // Keep the bootstrap idempotent so the GarminConnection FK does not fail with a generic 500.
     await this.prisma.user.upsert({
       where: { id: userId },
       create: { id: userId, email: `${userId}@mvp.local`, name: 'MVP temporary user' },

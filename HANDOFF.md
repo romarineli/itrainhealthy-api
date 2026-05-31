@@ -1,63 +1,48 @@
 # HANDOFF — iTrain Healthy
 
 ## Status atual
-- Branch ativa: backend `dev`; frontend `dev`.
-- Última sessão: 2026-05-30
+- Branch ativa: backend `dev` rastreando `origin/dev`; frontend `dev` rastreando `origin/dev`.
+- Última sessão: 2026-05-31
+- Canal/projeto: `#itrainhealthy` / `channel:1510376273623650384` → iTrain Healthy.
+- Backend/API: `/Users/irene/projects/itrainhealthy-api` (alias dispatch: `/workspace/projects/itrainhealthy-api`).
+- Frontend/Web: `/Users/irene/projects/itrainhealthy` (alias dispatch: `/workspace/projects/itrainhealthy`).
+- Último commit backend `dev`: `fix: stabilize garmin oauth start` (hash confirmado no resumo final da sessão).
 
 ## O que foi feito
-- Lido o contexto histórico deste `HANDOFF.md` antes de executar o escopo.
-- Confirmado projeto iTrain Healthy pelo canal `#itrainhealthy`:
-  - Backend/API: `/Users/irene/projects/itrainhealthy-api`
-  - Frontend/Web: `/Users/irene/projects/itrainhealthy`
-  - Handoff: `/Users/irene/projects/itrainhealthy-api/HANDOFF.md`
-- Executado discovery obrigatório:
-  - Backend iniciou em `tandy/migrate-backend-scaffold-nestjs`, depois foi criada/trocada branch local `dev` apontando para os commits NestJS/Garmin existentes.
-  - Frontend iniciou em `main`, depois foi criada/trocada branch local `dev`.
-- Backend validado na branch `dev`; ela contém os commits locais de scaffold NestJS e foundation Garmin:
-  - `03329d6 refactor: migrate backend scaffold to nestjs`
-  - `d83b059 feat: add garmin integration foundation`
-- Frontend Vite React/TypeScript integrado ao fluxo Garmin do backend:
-  - Criado client `src/lib/garminApi.ts` para `GET /api/garmin/authorize/start`, `GET /api/garmin/status`, `POST /api/garmin/sync` e `POST /api/garmin/disconnect`.
-  - Dashboard passou a carregar status Garmin, exibir estados `loading`, `connected`, `disconnected`, `needs_configuration` e `error`.
-  - CTA **Conectar Garmin** chama o start OAuth e redireciona para `authorizationUrl` quando o backend está configurado.
-  - Adicionadas ações de atualização de status, sync manual e disconnect.
-  - Mensagem explícita de pendência de credenciais Garmin quando o backend retorna `needs_configuration` ou `configured=false`.
-  - UserId temporário do MVP centralizado via `VITE_MVP_USER_ID` com fallback local `demo-user`, enviado por query `userId` e header `x-user-id`.
-- Documentação frontend atualizada:
-  - `.env.example` com `VITE_API_BASE_URL` e `VITE_MVP_USER_ID`.
-  - `README.md` documentando envs, userId temporário/TODO auth e endpoints Garmin consumidos.
-- Validações executadas com sucesso:
-  - Frontend: `npm run lint` e `npm run build`.
-  - Backend: `npm run lint` e `npm run build`.
-- Commit frontend criado localmente na branch `dev`:
-  - `60a58d0 feat: connect dashboard to garmin api`
-- Tentado push seguro para `origin/dev` nos dois repositórios usando header de autenticação temporário com `SANCHO_GITHUB_TOKEN`, sem gravar token no remote.
-  - `git ls-remote --heads origin dev` autenticado não retornou branch remota `dev` para nenhum dos dois repositórios.
-  - Push bloqueado para ambos por permissão do GitHub: `Write access to repository not granted` / HTTP 403.
-  - `gh api repos/sys4u-br/itrainhealthy-api` e `gh api repos/sys4u-br/itrainhealthy` retornaram 404 para o token `sys4u-tandy`, indicando que o token não enxerga esses repositórios.
+- Lido este `HANDOFF.md` antes da execução e feito discovery obrigatório com `pwd` + `git status --short --branch` nos repos backend e frontend.
+- Revisado `PROJECTS_INDEX.md` geral do workspace; ele está atualizado com iTrain Healthy e aliases `/workspace/...`, mas fica fora do repositório backend e não entra no push da branch `dev` do backend.
+- Investigado erro 500 em produção no endpoint `GET https://itrainhealthy-api.xrunai.app/api/garmin/authorize/start?userId=demo-user`.
+- Confirmado via produção que `GET /api/garmin/status?userId=demo-user` responde 200 com `status: disconnected`, indicando API no ar, tabelas Garmin acessíveis e OAuth Garmin configurado; o 500 fica específico do fluxo `authorize/start`.
+- Diagnosticada causa provável no código: em `NODE_ENV=production`, `ensureTemporaryUserForMvp` retornava sem criar o usuário temporário; em seguida o `upsert` de `garminConnection` tentava gravar `userId=demo-user` com FK para `User` inexistente, gerando erro Prisma/DB tratado como 500 genérico. Local funcionava porque o helper criava o usuário fora de production.
+- Aplicada correção mínima no backend:
+  - `src/modules/garmin/garmin.service.ts`: bootstrap idempotente do usuário MVP também em produção, enquanto não houver auth/signup real, evitando falha de FK no `authorize/start`.
+  - `src/config/env.ts`: adicionadas variáveis opcionais `APP_URL` e `API_URL` ao schema.
+  - `src/modules/garmin/garmin.adapter.ts`: `GARMIN_REDIRECT_URI` continua tendo precedência; se omitida, o redirect é derivado de `API_URL`/`APP_URL` + `/api/garmin/callback`.
+  - `.env.example`: documentadas `APP_URL`, `API_URL` e exigência de redirect Garmin exato.
+- Documentado tecnicamente em `.env.example` e neste handoff que `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY` são segredos internos da aplicação/infra, não são fornecidos pela Garmin, e devem ser gerados como strings aleatórias fortes.
+- Revisado diff antes de commit/push; não foram identificados segredos reais commitados, apenas placeholders vazios e URLs públicas locais/produção.
+- Validação executada no backend com sucesso:
+  - `npm run build`
+  - `npm run lint`
 
 ## Pendente / próximos passos
-- Conceder ao usuário/token `sys4u-tandy` acesso aos repositórios `sys4u-br/itrainhealthy-api` e `sys4u-br/itrainhealthy` ou criar esses repositórios no GitHub com permissão de escrita.
-- Após permissão/repo disponível, executar push de ambos:
-  - Backend: `/Users/irene/projects/itrainhealthy-api`, branch local `dev`.
-  - Frontend: `/Users/irene/projects/itrainhealthy`, branch local `dev`.
-- Obter credenciais reais Garmin e configurar backend (`GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, `GARMIN_REDIRECT_URI`) para validar OAuth real.
-- Aplicar migration Prisma em PostgreSQL real/local e validar fluxo com dados persistidos.
-- Implementar auth real/JWT e remover userId temporário via env/query/header.
-- Confirmar contratos reais Garmin para endpoints OAuth/token/refresh/revoke e endpoints de dados Health API.
-- Adicionar testes unitários/integrados para o fluxo Garmin backend e client/frontend.
+- Fazer deploy da branch `dev`/correção para produção e retestar `GET /api/garmin/authorize/start?userId=demo-user`.
+- Garantir que a URL cadastrada no portal Garmin seja exatamente `https://itrainhealthy-api.xrunai.app/api/garmin/callback` ou igual ao valor efetivo de `GARMIN_REDIRECT_URI` em produção.
+- Configurar em produção segredos fortes gerados pela infra/app: `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY`.
+- Aplicar/validar migrations Prisma no PostgreSQL de produção se ainda não estiverem aplicadas.
+- Implementar auth real/JWT e remover o mecanismo temporário `userId` por query/header e o bootstrap MVP de usuário.
+- Confirmar contratos reais Garmin para token/refresh/revoke e endpoints de Health API antes de habilitar sync real.
 
 ## Decisões tomadas
-- Criar branch local `dev` em ambos os repositórios: pedido explícito de Rodrigo/Sancho para integrar e enviar a branch dev.
-- Basear `dev` do backend na branch que já continha NestJS + Garmin foundation: preserva histórico local e evita perder os commits já feitos.
-- Usar `POST /api/garmin/disconnect` no frontend: o backend aceita `POST` e `DELETE`; `POST` evita problemas de body em `DELETE` e mantém contrato simples no MVP.
-- Manter `VITE_MVP_USER_ID` com fallback `demo-user`: permite validar integração antes de auth real, mas está documentado como TODO controlado.
-- Não implementar admin nem auth real nesta sessão: fora do escopo explícito.
-- Não fazer force push: remoto `dev` não foi encontrado e, de qualquer forma, push foi bloqueado por permissão.
+- Manter `GARMIN_REDIRECT_URI` explícita com maior precedência: Garmin exige redirect URL cadastrada exatamente, então variável explícita reduz risco de mismatch.
+- Adicionar fallback por `API_URL`/`APP_URL`: facilita configuração em ambientes sem duplicar URL, mas sem quebrar produção já configurada com `GARMIN_REDIRECT_URI`.
+- Criar usuário MVP em produção de forma idempotente: decisão temporária para compatibilizar o endpoint público atual (`userId=demo-user`) com FK de `GarminConnection`, eliminando 500 até existir auth/signup real.
+- Tratar `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY` como segredos internos: Garmin fornece client id/secret e valida redirect URI; assinatura de state e criptografia local de tokens são responsabilidade da aplicação/infra.
+- Não expor nem inspecionar segredos: diagnóstico feito por código, diff local e respostas HTTP públicas.
 
 ## Riscos e bloqueios conhecidos
-- Push remoto não concluído por falta de permissão/acesso do token aos repositórios iTrain Healthy no GitHub.
-- Integração Garmin ainda depende de credenciais reais; sem elas o dashboard mostra estado de credenciais pendentes e não redireciona para OAuth real.
-- Sem auth real, `VITE_MVP_USER_ID`/`x-user-id`/query `userId` é apenas mecanismo de MVP e não deve ser usado como autorização em produção.
-- Backend ainda tem adapter de dados Garmin parcialmente stubado até confirmação da documentação/contratos aprovados.
-- Migration Prisma Garmin foi criada em sessão anterior, mas ainda precisa ser aplicada/validada contra PostgreSQL.
+- A correção precisa ser implantada; produção seguirá retornando 500 no `authorize/start` até deploy da branch corrigida.
+- O bootstrap MVP em produção permite criação idempotente de usuário pelo `userId` informado enquanto o endpoint estiver público; deve ser removido quando auth real entrar.
+- Sem logs de produção/DB, o diagnóstico de FK é forte pelo comportamento observado e pelo código, mas a confirmação definitiva virá no reteste pós-deploy.
+- `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY` devem estar configuradas com valores longos/aleatórios em produção; não usar defaults de desenvolvimento.
+- Se `GARMIN_REDIRECT_URI`/`API_URL` divergirem do portal Garmin, o redirect pode ser gerado mas o OAuth falhará no provedor.

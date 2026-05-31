@@ -5,6 +5,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().min(1),
+  APP_URL: z.string().url().optional(),
+  API_URL: z.string().url().optional(),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   GARMIN_CLIENT_ID: z.string().optional().default(''),
   GARMIN_CLIENT_SECRET: z.string().optional().default(''),

@@ -35,7 +35,7 @@ export class GarminAdapter {
     this.baseUrl = this.config.get<string>('GARMIN_API_BASE_URL') ?? 'https://apis.garmin.com';
     this.clientId = this.config.get<string>('GARMIN_CLIENT_ID') ?? '';
     this.clientSecret = this.config.get<string>('GARMIN_CLIENT_SECRET') ?? '';
-    this.redirectUri = this.config.get<string>('GARMIN_REDIRECT_URI') ?? '';
+    this.redirectUri = this.resolveRedirectUri();
   }
 
   isConfigured(): boolean {
@@ -134,5 +134,15 @@ export class GarminAdapter {
     if (!this.isConfigured()) {
       throw new Error('Garmin OAuth is not configured. Set GARMIN_CLIENT_ID, GARMIN_CLIENT_SECRET and GARMIN_REDIRECT_URI.');
     }
+  }
+
+  private resolveRedirectUri(): string {
+    const explicitRedirectUri = this.config.get<string>('GARMIN_REDIRECT_URI');
+    if (explicitRedirectUri) {
+      return explicitRedirectUri;
+    }
+
+    const apiUrl = this.config.get<string>('API_URL') ?? this.config.get<string>('APP_URL');
+    return apiUrl ? `${apiUrl.replace(/\/$/, '')}/api/garmin/callback` : '';
   }
 }
