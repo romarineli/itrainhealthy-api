@@ -87,7 +87,17 @@ Fluxo disponível para teste:
 1. `POST /api/auth/register` com `{ "email", "password", "name" }` cria usuário com senha hasheada via `scrypt` e retorna JWT.
 2. `POST /api/auth/login` com `{ "email", "password" }` retorna JWT.
 3. `GET /api/auth/me` exige `Authorization: Bearer <token>`.
-4. Rotas Garmin aceitam JWT e usam o `sub` do token como usuário; `x-user-id`/`userId` seguem apenas como fallback temporário para testes antigos.
+4. Rotas Garmin aceitam JWT e usam o `sub` do token como `User.uuid`; `x-user-id`/`userId` seguem apenas como fallback temporário para testes antigos.
+
+## Consentimento LGPD MVP
+
+- `GET /api/consents/status` — protegido por Bearer JWT; retorna consentimentos obrigatórios e `allAccepted`.
+- `POST /api/consents/accept` — protegido por Bearer JWT; registra aceite com tipo, versão, `acceptedAt`, IP e user-agent quando disponíveis.
+- Consentimento obrigatório inicial: `TERMS_OF_USE`, versão `2026-05-31`.
+
+## Identificadores do banco
+
+Todas as tabelas usam `id Int @id @default(autoincrement())` como PK interna sequencial e `uuid String @unique @default(cuid())` como identificador público/externo. APIs/JWT continuam expondo o `uuid`, não o `id` interno.
 
 Variáveis Auth:
 

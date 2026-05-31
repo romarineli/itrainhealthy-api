@@ -33,28 +33,28 @@ export class AuthService {
         name: dto.name?.trim() || null,
         passwordHash: this.hashPassword(dto.password),
       },
-      select: { id: true, email: true, name: true },
+      select: { uuid: true, email: true, name: true },
     });
 
-    return this.toAuthResponse(user);
+    return this.toAuthResponse(this.toAuthenticatedUser(user));
   }
 
   async login(dto: AuthLoginDto) {
     const email = dto.email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email }, select: { id: true, email: true, name: true, passwordHash: true } });
+    const user = await this.prisma.user.findUnique({ where: { email }, select: { uuid: true, email: true, name: true, passwordHash: true } });
     if (!user?.passwordHash || !this.verifyPassword(dto.password, user.passwordHash)) {
       throw new UnauthorizedException('Invalid email or password.');
     }
 
-    return this.toAuthResponse({ id: user.id, email: user.email, name: user.name });
+    return this.toAuthResponse(this.toAuthenticatedUser(user));
   }
 
   async getMe(userId: string): Promise<AuthenticatedUser> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, name: true } });
+    const user = await this.prisma.user.findUnique({ where: { uuid: userId }, select: { uuid: true, email: true, name: true } });
     if (!user) {
       throw new UnauthorizedException('Authenticated user not found.');
     }
-    return user;
+    return this.toAuthenticatedUser(user);
   }
 
   getStatus() {
@@ -94,6 +94,10 @@ export class AuthService {
     }
 
     return payload;
+  }
+
+  private toAuthenticatedUser(user: { uuid: string; email: string; name: string | null }): AuthenticatedUser {
+    return { id: user.uuid, email: user.email, name: user.name };
   }
 
   private toAuthResponse(user: AuthenticatedUser) {

@@ -36,23 +36,26 @@ enum GarminMetricType {
 }
 
 model User {
-  id           String        @id @default(cuid())
-  email        String        @unique
-  name         String?
-  passwordHash String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  profile      Profile?
-  consents     Consent[]
+  id                 Int                @id @default(autoincrement())
+  uuid               String             @unique @default(cuid())
+  email              String             @unique
+  name               String?
+  passwordHash       String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  profile            Profile?
+  consents           Consent[]
   integrations       Integration[]
+  readinessSnapshots ReadinessSnapshot[]
   garminConnections  GarminConnection[]
   garminSyncLogs     GarminSyncLog[]
   garminMetrics      GarminMetric[]
 }
 
 model Profile {
-  id        String   @id @default(cuid())
-  userId    String   @unique
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(cuid())
+  userId    Int      @unique
   birthDate DateTime?
   timezone  String   @default("America/Sao_Paulo")
   createdAt DateTime @default(now())
@@ -61,20 +64,25 @@ model Profile {
 }
 
 model Consent {
-  id        String      @id @default(cuid())
-  userId    String
-  type      ConsentType
-  version   String
-  accepted  Boolean     @default(false)
-  createdAt DateTime    @default(now())
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         Int         @id @default(autoincrement())
+  uuid       String      @unique @default(cuid())
+  userId     Int
+  type       ConsentType
+  version    String
+  accepted   Boolean     @default(false)
+  acceptedAt DateTime?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, type, version])
 }
 
 model Integration {
-  id           String            @id @default(cuid())
-  userId       String
+  id           Int               @id @default(autoincrement())
+  uuid         String            @unique @default(cuid())
+  userId       Int
   provider     String
   status       IntegrationStatus @default(DISCONNECTED)
   externalId   String?
@@ -89,19 +97,22 @@ model Integration {
 }
 
 model ReadinessSnapshot {
-  id        String   @id @default(cuid())
-  userId    String
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(cuid())
+  userId    Int
   score     Int
   summary   String?
   source    String   @default("stub")
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
 }
 
 model GarminConnection {
-  id                    String            @id @default(cuid())
-  userId                String
+  id                    Int               @id @default(autoincrement())
+  uuid                  String            @unique @default(cuid())
+  userId                Int
   provider              String            @default("garmin")
   status                IntegrationStatus @default(DISCONNECTED)
   externalUserId        String?
@@ -123,20 +134,21 @@ model GarminConnection {
 }
 
 model GarminSyncLog {
-  id               String            @id @default(cuid())
-  userId           String
-  connectionId     String
-  status           GarminSyncStatus  @default(RUNNING)
-  startedAt        DateTime          @default(now())
+  id               Int              @id @default(autoincrement())
+  uuid             String           @unique @default(cuid())
+  userId           Int
+  connectionId     Int
+  status           GarminSyncStatus @default(RUNNING)
+  startedAt        DateTime         @default(now())
   finishedAt       DateTime?
   from             DateTime?
   to               DateTime?
-  metricsRequested String[]          @default([])
-  recordsImported  Int               @default(0)
+  metricsRequested String[]         @default([])
+  recordsImported  Int              @default(0)
   errorMessage     String?
-  createdAt        DateTime          @default(now())
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  connection       GarminConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  createdAt        DateTime         @default(now())
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection       GarminConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@index([userId, startedAt])
   @@index([connectionId, startedAt])
@@ -144,9 +156,10 @@ model GarminSyncLog {
 }
 
 model GarminMetric {
-  id           String           @id @default(cuid())
-  userId       String
-  connectionId String
+  id           Int              @id @default(autoincrement())
+  uuid         String           @unique @default(cuid())
+  userId       Int
+  connectionId Int
   type         GarminMetricType
   sourceId     String?
   measuredAt   DateTime
