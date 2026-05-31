@@ -6,78 +6,69 @@
 - Canal/projeto: `#itrainhealthy` / `channel:1510376273623650384` → iTrain Healthy.
 - Backend/API: `/Users/irene/projects/itrainhealthy-api` (alias dispatch: `/workspace/projects/itrainhealthy-api`).
 - Frontend/Web: `/Users/irene/projects/itrainhealthy` (alias dispatch: `/workspace/projects/itrainhealthy`).
-- Último push backend `dev`: `5f0c3830fcc97e6fa25e59d49d46bf2e0ed4f259` (`feat: add sequential ids and lgpd consents`).
-- Último push frontend `dev`: `0dc6c240d5cdb3ce54a8e6bccdea926fbf77744c` (`feat: add lgpd consent gate`).
+- Último push backend `dev`: `0fe09f99684bebaf5409233b84ac09ef9d1d9439` (`feat: add athlete profile api`).
+- Último push frontend `dev`: `5a5ae9c9988c1e4c271fc68c0875675c53c10bf7` (`feat: add athlete profile gate`).
 
 ## O que foi feito
-- Lido este `HANDOFF.md` antes/ao longo da execução e feito discovery obrigatório com `pwd` + `git status --short --branch` nos repos backend e frontend.
-- Mantido Auth mínimo já existente:
-  - `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`.
-  - JWT HS256 via `JWT_SECRET`; `sub` segue como identificador público do usuário.
-- Migração estrutural Prisma/PostgreSQL criada para o projeto ainda inicial:
-  - Migration: `prisma/migrations/20260531190000_add_sequential_ids_and_lgpd_consents/migration.sql`.
-  - Todas as models/tabelas passam a usar `id Int @id @default(autoincrement())` como PK interna sequencial.
-  - O antigo identificador string `cuid` foi preservado como `uuid String @unique @default(cuid())`.
-  - FKs/relações foram ajustadas para IDs internos inteiros: `Profile`, `Consent`, `Integration`, `ReadinessSnapshot`, `GarminConnection`, `GarminSyncLog`, `GarminMetric`.
-  - Migration tenta preservar dados existentes renomeando `id` antigo para `uuid`, criando novo `id` inteiro e remapeando FKs por join contra `User.uuid`/`GarminConnection.uuid`.
-- Compatibilidade de API pública preservada:
-  - Backend auth retorna `user.id` como `uuid` público, não o `id` inteiro interno.
-  - JWT `sub` continua usando `uuid` público.
-  - Garmin recebe usuário público (`uuid`) via JWT/fallback, resolve internamente para `User.id` inteiro e grava relações com FK interna.
-  - Fallback temporário `x-user-id`/query `userId` foi mantido para testes antigos, criando usuário MVP com `uuid=<userId>` se necessário.
-- Implementado Consentimento LGPD básico no backend:
-  - `GET /api/consents/status` protegido por Bearer JWT.
-  - `GET /api/consents` alias protegido por Bearer JWT.
-  - `POST /api/consents/accept` protegido por Bearer JWT.
-  - Registra `type`, `version`, `accepted`, `acceptedAt`, `ipAddress`, `userAgent`.
-  - Consentimento obrigatório inicial: `TERMS_OF_USE`, versão `2026-05-31`.
-- Implementado gate LGPD básico no frontend:
-  - Após login/cadastro, o app consulta `GET /api/consents/status`.
-  - Se ainda não aceito, exibe tela de aceite com texto mínimo antes do dashboard.
-  - Aceite chama `POST /api/consents/accept` com Bearer JWT.
-  - Logout no gate limpa sessão local.
+- Lido este `HANDOFF.md` e feito discovery obrigatório com `pwd` + `git status --short --branch` nos repos backend e frontend.
+- Mantido Auth mínimo, Consentimento LGPD e fluxo Garmin já validados por Rodrigo.
+- Implementado Perfil Atleta mínimo no backend:
+  - Nova model Prisma `AthleteProfile` com `id Int @id @default(autoincrement())` como PK interna e `uuid String @unique @default(cuid())` como identificador público.
+  - Relação 1:1 com `User` via `userId Int @unique` usando o ID interno sequencial.
+  - Campos mínimos: `displayName`, `birthDate`, `gender`, `heightCm`, `weightKg`, `primarySport`, `trainingGoal`, `experienceLevel`, `weeklyTrainingDays`, `timezone`, `createdAt`, `updatedAt`.
+  - Migration criada: `prisma/migrations/20260531203000_add_athlete_profile/migration.sql`.
+  - Novo módulo Nest `AthleteProfileModule` registrado em `AppModule`.
+  - Endpoints protegidos por Bearer JWT:
+    - `GET /api/athlete-profile/me` retorna perfil do usuário autenticado ou `null`.
+    - `PUT /api/athlete-profile/me` faz upsert do perfil do usuário autenticado.
+    - `PATCH /api/athlete-profile/me` também faz upsert/edição parcial.
+  - DTO com validação básica de tipos, ranges e tamanhos (`heightCm`, `weightKg`, `weeklyTrainingDays`, strings e data ISO).
+  - API expõe `id` como `uuid` público do perfil, nunca o ID inteiro interno.
+- Implementado Perfil Atleta mínimo no frontend:
+  - Client `src/lib/athleteProfileApi.ts` com Bearer JWT.
+  - Gate/form `src/features/athlete-profile/AthleteProfileGate.tsx` após consentimento LGPD.
+  - Se perfil não existe ou está incompleto, dashboard fica bloqueado até salvar campos mínimos.
+  - Dashboard recebeu card/painel de Perfil Atleta e botão simples “Editar perfil”.
+  - Formulário permite editar nome, nascimento, gênero, altura, peso, esporte, objetivo, experiência, dias/semana e timezone.
 - Documentação atualizada:
-  - Backend `README.md`: endpoints LGPD e decisão de identificadores internos/públicos.
-  - Frontend `README.md`: gate LGPD após auth.
+  - Backend `README.md`: endpoints e campos do Perfil Atleta.
+  - Frontend `README.md`: ordem Auth → LGPD → Perfil Atleta → Dashboard.
 - Validações executadas com sucesso:
   - Backend: `npx prisma generate`, `npm run build`, `npm run lint`.
   - Frontend: `npm run build`, `npm run lint`.
 - Commits/push concluídos em `origin/dev`:
-  - Backend: `5f0c3830fcc97e6fa25e59d49d46bf2e0ed4f259` (`feat: add sequential ids and lgpd consents`).
-  - Frontend: `0dc6c240d5cdb3ce54a8e6bccdea926fbf77744c` (`feat: add lgpd consent gate`).
+  - Backend: `0fe09f99684bebaf5409233b84ac09ef9d1d9439` (`feat: add athlete profile api`).
+  - Frontend: `5a5ae9c9988c1e4c271fc68c0875675c53c10bf7` (`feat: add athlete profile gate`).
 
 ## Pendente / próximos passos
-- Deploy backend `origin/dev` e aplicar migrations Prisma no banco de produção/staging:
-  - `npx prisma migrate deploy` no ambiente alvo.
-- Antes de aplicar em produção, fazer backup/snapshot do banco e preferencialmente testar a migration em clone/staging, pois ela altera PKs/FKs de todas as tabelas.
+- Deploy backend `origin/dev` e aplicar migrations Prisma no ambiente alvo:
+  - `npx prisma migrate deploy`.
 - Deploy frontend `origin/dev`.
 - Testar fluxo completo:
   1. abrir app;
   2. criar conta ou login;
   3. aceitar consentimento LGPD;
-  4. acessar dashboard;
-  5. conectar Garmin;
-  6. confirmar que status Garmin e consentimento ficam vinculados ao usuário autenticado.
+  4. preencher perfil atleta mínimo;
+  5. confirmar entrada no dashboard;
+  6. editar perfil pelo botão “Editar perfil”;
+  7. conectar Garmin e validar status no mesmo usuário autenticado.
+- Usar dados do `AthleteProfile` na fórmula v1 de prontidão/recomendações quando essa regra for definida.
 - Tornar JWT obrigatório nas rotas Garmin quando testes legados com `demo-user` não forem mais necessários.
-- Considerar refresh token/cookie httpOnly em etapa posterior; `localStorage` foi escolhido apenas para MVP/teste.
-- Aplicar auth/consent aos demais módulos (`profile`, `readiness`) quando saírem de stub.
+- Considerar refresh token/cookie httpOnly em etapa posterior; `localStorage` segue como solução MVP/teste.
 - Confirmar/revisar endpoints de dados Wellness reais e mapeamentos antes de habilitar sync real.
 
 ## Decisões tomadas
-- Usar `id Int` autoincremental como PK interna em todas as tabelas para facilitar inspeção/ordenação e relações eficientes.
-- Manter `uuid/cuid` como identificador público único para não expor sequenciais e preservar contrato público/JWT.
-- Remapear FKs para inteiros no banco, mas traduzir `uuid` público para `id` interno nos serviços.
-- Consentimento LGPD mínimo usa `TERMS_OF_USE` versão `2026-05-31` como primeira versão unificada de termos/política do MVP.
-- Registrar IP e user-agent no aceite quando disponíveis via Nest (`@Ip`, header `user-agent`).
-- Manter fallback `x-user-id`/`userId` no Garmin temporariamente para não quebrar validações MVP antigas.
-- Continuar com token em `localStorage` no frontend por simplicidade de MVP; documentado como temporário.
+- Criar `AthleteProfile` em vez de reaproveitar `Profile`: separa claramente perfil esportivo/saúde do perfil técnico antigo (`Profile`) e evita quebrar stubs existentes.
+- `AthleteProfile.id` é interno sequencial e `AthleteProfile.uuid` é público: mantém o padrão arquitetural atual e evita expor IDs incrementais.
+- Endpoints são sempre `/me` e protegidos por JWT: impede acesso/edição de perfil de outros usuários.
+- Perfil “completo” no frontend exige apenas campos essenciais de personalização inicial: `displayName`, `primarySport`, `trainingGoal`, `experienceLevel`, `weeklyTrainingDays`.
+- Campos clínicos/sensíveis ficaram mínimos e opcionais (`heightCm`, `weightKg`, `birthDate`, `gender`) para reduzir atrito no MVP.
+- `PUT` e `PATCH` compartilham upsert no MVP; DTO aceita payload parcial e backend atualiza apenas campos enviados.
 
 ## Riscos e bloqueios conhecidos
-- Migration estrutural troca PKs/FKs de todas as tabelas; apesar de tentar preservar dados, deve ser validada em staging/clone antes de produção.
-- Se existirem registros órfãos em FKs antigas (`userId` sem `User.uuid` correspondente ou `connectionId` sem `GarminConnection.uuid`), a migration pode falhar ao aplicar `NOT NULL`; limpar dados órfãos antes se necessário.
-- Sequências/identity novas serão criadas no momento da migration; após restore/import manual, validar `id` e constraints.
-- Sem `npx prisma migrate deploy`, backend novo não roda corretamente contra banco antigo.
-- `JWT_SECRET` precisa ser forte e configurado antes de produção; não usar default local.
-- `localStorage` é vulnerável a XSS; reforçar CSP/sanitização e migrar para cookie httpOnly/refresh token posteriormente.
-- Enquanto fallback `userId` existir, rotas Garmin ainda aceitam fluxo antigo; remover quando JWT for obrigatório.
-- Usuários temporários existentes não têm senha e não conseguem login até cadastro/conta real ser criada.
+- Migration anterior estrutural de IDs sequenciais ainda é o maior ponto de atenção em bancos com dados reais; validar em staging/clone antes de produção.
+- Nova migration `AthleteProfile` é aditiva e de baixo risco, mas depende das migrations anteriores já aplicadas porque referencia `User(id)` inteiro.
+- Sem `npx prisma migrate deploy`, endpoints de perfil atleta falharão por tabela ausente.
+- O texto/contrato de LGPD ainda é MVP; revisar juridicamente antes de produção real com dados sensíveis de saúde.
+- `localStorage` continua vulnerável a XSS; migrar auth para cookie httpOnly/refresh-token posteriormente.
+- Enquanto fallback `userId` existir no Garmin, ainda há fluxo legado; remover quando JWT for obrigatório.
