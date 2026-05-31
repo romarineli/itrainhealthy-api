@@ -86,7 +86,7 @@ Fluxo disponível:
 1. Configure `.env` a partir de `.env.example`.
 2. Enquanto não há auth real, envie o usuário temporariamente via header `x-user-id` ou query `userId`.
    - Ex.: `curl -H 'x-user-id: demo-user' http://localhost:3000/api/garmin/status`
-   - Em ambiente não-produção, o start OAuth cria um usuário placeholder para permitir o FK do Prisma no MVP.
+   - No MVP, o start OAuth cria/garante um usuário placeholder para permitir o FK do Prisma até existir auth real.
    - TODO controlado: substituir por subject autenticado via middleware/JWT e remover criação temporária.
 3. Inicie OAuth em `GET /api/garmin/authorize/start`.
 4. A Garmin deve redirecionar para `GET /api/garmin/callback?code=...&state=...`.
@@ -97,9 +97,11 @@ Variáveis Garmin:
 - `GARMIN_CLIENT_ID`
 - `GARMIN_CLIENT_SECRET`
 - `GARMIN_REDIRECT_URI`
-- `GARMIN_API_BASE_URL`
-- `GARMIN_STATE_SECRET` — segredo de assinatura de `state` OAuth.
-- `GARMIN_TOKEN_ENCRYPTION_KEY` — chave para criptografar tokens em repouso; obrigatória antes de produção.
+- `GARMIN_AUTHORIZATION_URL` — endpoint OAuth 2.0 PKCE de autorização (`https://connect.garmin.com/oauth2Confirm`).
+- `GARMIN_TOKEN_URL` — endpoint OAuth 2.0 PKCE de token (`https://connectapi.garmin.com/di-oauth2-service/oauth/token`).
+- `GARMIN_API_BASE_URL` — host das Wellness REST APIs (`https://apis.garmin.com`), não deve ser usado como endpoint de authorize.
+- `GARMIN_STATE_SECRET` — segredo interno da aplicação para assinatura de `state` OAuth; não é fornecido pela Garmin.
+- `GARMIN_TOKEN_ENCRYPTION_KEY` — segredo interno da aplicação para criptografar tokens em repouso; não é fornecido pela Garmin e é obrigatório antes de produção.
 
 Persistência Prisma criada:
 
@@ -109,7 +111,7 @@ Persistência Prisma criada:
 
 Pendências externas:
 
-- Confirmar endpoints/contratos reais da API Garmin aprovada para o app, especialmente token, refresh, revoke e payloads de dados.
+- Confirmar no portal Garmin se o app está habilitado no ambiente correto (evaluation/sandbox ou production) para OAuth 2.0 PKCE e se o redirect URI bate exatamente com `GARMIN_REDIRECT_URI`.
 - Substituir os stubs seguros de coleta de dados por chamadas reais e mapeamentos validados.
 - Não há diagnóstico médico; os dados importados devem alimentar apenas features de bem-estar/prontidão definidas pelo produto.
 

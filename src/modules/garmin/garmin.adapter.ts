@@ -27,37 +27,43 @@ export interface GarminSyncWindow {
 export class GarminAdapter {
   private readonly logger = new Logger(GarminAdapter.name);
   private readonly baseUrl: string;
+  private readonly authorizationUrl: string;
+  private readonly tokenUrl: string;
   private readonly clientId: string;
   private readonly clientSecret: string;
   private readonly redirectUri: string;
 
   constructor(private readonly config: ConfigService) {
     this.baseUrl = this.config.get<string>('GARMIN_API_BASE_URL') ?? 'https://apis.garmin.com';
+    this.authorizationUrl = this.config.get<string>('GARMIN_AUTHORIZATION_URL') ?? 'https://connect.garmin.com/oauth2Confirm';
+    this.tokenUrl = this.config.get<string>('GARMIN_TOKEN_URL') ?? 'https://connectapi.garmin.com/di-oauth2-service/oauth/token';
     this.clientId = this.config.get<string>('GARMIN_CLIENT_ID') ?? '';
     this.clientSecret = this.config.get<string>('GARMIN_CLIENT_SECRET') ?? '';
     this.redirectUri = this.resolveRedirectUri();
   }
 
   isConfigured(): boolean {
-    return Boolean(this.clientId && this.clientSecret && this.redirectUri && this.baseUrl);
+    return Boolean(this.clientId && this.clientSecret && this.redirectUri && this.authorizationUrl && this.tokenUrl && this.baseUrl);
   }
 
-  buildAuthorizationRequest(state: string): GarminAuthorizationRequest {
-    const url = new URL('/oauth/authorize', this.baseUrl);
+  buildAuthorizationRequest(state: string, codeChallenge: string): GarminAuthorizationRequest {
+    const url = new URL(this.authorizationUrl);
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('client_id', this.clientId);
     url.searchParams.set('redirect_uri', this.redirectUri);
     url.searchParams.set('state', state);
-    url.searchParams.set('scope', 'read');
+    url.searchParams.set('code_challenge', codeChallenge);
+    url.searchParams.set('code_challenge_method', 'S256');
 
     return { authorizationUrl: url.toString(), state, configured: this.isConfigured() };
   }
 
-  async exchangeCodeForToken(code: string): Promise<GarminTokenSet> {
+  async exchangeCodeForToken(code: string, codeVerifier: string): Promise<GarminTokenSet> {
     this.assertConfigured();
     const payload = new URLSearchParams({
       grant_type: 'authorization_code',
       code,
+      code_verifier: codeVerifier,
       redirect_uri: this.redirectUri,
       client_id: this.clientId,
       client_secret: this.clientSecret,
@@ -94,8 +100,7 @@ export class GarminAdapter {
   }
 
   private async requestToken(payload: URLSearchParams, operation: string): Promise<GarminTokenSet> {
-    const tokenUrl = new URL('/oauth/token', this.baseUrl);
-    const response = await fetch(tokenUrl, {
+    const response = await fetch(this.tokenUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
       body: payload,
@@ -132,7 +137,7 @@ export class GarminAdapter {
 
   private assertConfigured(): void {
     if (!this.isConfigured()) {
-      throw new Error('Garmin OAuth is not configured. Set GARMIN_CLIENT_ID, GARMIN_CLIENT_SECRET and GARMIN_REDIRECT_URI.');
+      throw new Error('Garmin OAuth is not configured. Set GARMIN_CLIENT_ID, GARMIN_CLIENT_SECRET, GARMIN_REDIRECT_URI, GARMIN_AUTHORIZATION_URL and GARMIN_TOKEN_URL.');
     }
   }
 

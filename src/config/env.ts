@@ -11,6 +11,8 @@ const envSchema = z.object({
   GARMIN_CLIENT_ID: z.string().optional().default(''),
   GARMIN_CLIENT_SECRET: z.string().optional().default(''),
   GARMIN_REDIRECT_URI: z.string().url().optional(),
+  GARMIN_AUTHORIZATION_URL: z.string().url().default('https://connect.garmin.com/oauth2Confirm'),
+  GARMIN_TOKEN_URL: z.string().url().default('https://connectapi.garmin.com/di-oauth2-service/oauth/token'),
   GARMIN_API_BASE_URL: z.string().url().default('https://apis.garmin.com'),
   GARMIN_STATE_SECRET: z.string().optional().default(''),
   GARMIN_TOKEN_ENCRYPTION_KEY: z.string().optional().default(''),

@@ -6,44 +6,47 @@
 - Canal/projeto: `#itrainhealthy` / `channel:1510376273623650384` → iTrain Healthy.
 - Backend/API: `/Users/irene/projects/itrainhealthy-api` (alias dispatch: `/workspace/projects/itrainhealthy-api`).
 - Frontend/Web: `/Users/irene/projects/itrainhealthy` (alias dispatch: `/workspace/projects/itrainhealthy`).
-- Push backend `dev` realizado para `origin/dev` nesta sessão; hashes confirmados no resumo final.
 
 ## O que foi feito
 - Lido este `HANDOFF.md` antes da execução e feito discovery obrigatório com `pwd` + `git status --short --branch` nos repos backend e frontend.
-- Revisado `PROJECTS_INDEX.md` geral do workspace; ele está atualizado com iTrain Healthy e aliases `/workspace/...`, mas fica fora do repositório backend e não entra no push da branch `dev` do backend.
-- Investigado erro 500 em produção no endpoint `GET https://itrainhealthy-api.xrunai.app/api/garmin/authorize/start?userId=demo-user`.
-- Confirmado via produção que `GET /api/garmin/status?userId=demo-user` responde 200 com `status: disconnected`, indicando API no ar, tabelas Garmin acessíveis e OAuth Garmin configurado; o 500 fica específico do fluxo `authorize/start`.
-- Diagnosticada causa provável no código: em `NODE_ENV=production`, `ensureTemporaryUserForMvp` retornava sem criar o usuário temporário; em seguida o `upsert` de `garminConnection` tentava gravar `userId=demo-user` com FK para `User` inexistente, gerando erro Prisma/DB tratado como 500 genérico. Local funcionava porque o helper criava o usuário fora de production.
-- Aplicada correção mínima no backend:
-  - `src/modules/garmin/garmin.service.ts`: bootstrap idempotente do usuário MVP também em produção, enquanto não houver auth/signup real, evitando falha de FK no `authorize/start`.
-  - `src/config/env.ts`: adicionadas variáveis opcionais `APP_URL` e `API_URL` ao schema.
-  - `src/modules/garmin/garmin.adapter.ts`: `GARMIN_REDIRECT_URI` continua tendo precedência; se omitida, o redirect é derivado de `API_URL`/`APP_URL` + `/api/garmin/callback`.
-  - `.env.example`: documentadas `APP_URL`, `API_URL` e exigência de redirect Garmin exato.
-- Documentado tecnicamente em `.env.example` e neste handoff que `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY` são segredos internos da aplicação/infra, não são fornecidos pela Garmin, e devem ser gerados como strings aleatórias fortes.
-- Revisado diff antes de commit/push; não foram identificados segredos reais commitados, apenas placeholders vazios e URLs públicas locais/produção.
-- Validação executada no backend com sucesso antes do commit e novamente após rebase com `origin/dev`:
+- Investigado erro retornado pela Garmin após deploy: `Unable to identify proxy for host: apis-secure and url: /oauth/authorize` / `messaging.adaptors.http.flow.ApplicationNotFound`.
+- Diagnóstico técnico: o backend estava montando autorização em `https://apis.garmin.com/oauth/authorize` via `new URL('/oauth/authorize', GARMIN_API_BASE_URL)`. Esse host (`apis.garmin.com`) é usado para Wellness REST APIs, não para o endpoint de autorização OAuth do Garmin Connect Developer Program; por isso o gateway/proxy da Garmin não encontra aplicação/rota para `/oauth/authorize` e retorna `ApplicationNotFound`.
+- Confirmada documentação pública do Garmin Connect Developer Program OAuth 2.0 PKCE indicando:
+  - Authorization GET: `https://connect.garmin.com/oauth2Confirm`
+  - Token POST: `https://connectapi.garmin.com/di-oauth2-service/oauth/token`
+  - Wellness REST APIs: `https://apis.garmin.com/wellness-api/rest/...`
+- Aplicada correção mínima no backend para OAuth 2.0 PKCE:
+  - `src/config/env.ts`: adicionadas `GARMIN_AUTHORIZATION_URL` e `GARMIN_TOKEN_URL` com defaults oficiais de OAuth 2.0 PKCE.
+  - `src/modules/garmin/garmin.adapter.ts`: authorization URL deixou de usar `GARMIN_API_BASE_URL + /oauth/authorize`; agora usa `GARMIN_AUTHORIZATION_URL`, inclui `code_challenge` e `code_challenge_method=S256`, remove `scope=read`, e troca token exchange/refresh para `GARMIN_TOKEN_URL`.
+  - `src/modules/garmin/garmin.service.ts`: gera `code_verifier`/`code_challenge` PKCE; guarda o verifier criptografado dentro do `state` assinado para recuperar no callback sem nova tabela temporária.
+  - `.env.example`: documentados endpoints OAuth corretos e alerta para não usar `https://apis.garmin.com/oauth/authorize`.
+  - `README.md`: documentado que `GARMIN_API_BASE_URL` é para Wellness REST APIs, não authorize, e listados endpoints OAuth 2.0 PKCE corretos.
+- Validação executada com sucesso:
   - `npm run build`
   - `npm run lint`
-- Commit da correção Garmin OAuth criado, rebaseado sobre `origin/dev` após entrada de commits remotos `mirror`, e push concluído para `origin/dev`.
 
 ## Pendente / próximos passos
-- Fazer deploy da branch `dev` atualizada para produção e retestar `GET /api/garmin/authorize/start?userId=demo-user`.
-- Garantir que a URL cadastrada no portal Garmin seja exatamente `https://itrainhealthy-api.xrunai.app/api/garmin/callback` ou igual ao valor efetivo de `GARMIN_REDIRECT_URI` em produção.
-- Configurar em produção segredos fortes gerados pela infra/app: `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY`.
+- Fazer deploy da branch `dev` atualizada para produção e retestar `GET /api/garmin/authorize/start?userId=demo-user`; a `authorizationUrl` esperada deve iniciar com `https://connect.garmin.com/oauth2Confirm` e conter `code_challenge`/`code_challenge_method=S256`.
+- Rodrigo deve validar no portal Garmin se o app está habilitado no ambiente correto (evaluation/sandbox ou production) para OAuth 2.0 PKCE e se o redirect URI cadastrado bate exatamente com `https://itrainhealthy-api.xrunai.app/api/garmin/callback`.
+- Configurar em produção, se quiser sobrescrever defaults:
+  - `GARMIN_AUTHORIZATION_URL=https://connect.garmin.com/oauth2Confirm`
+  - `GARMIN_TOKEN_URL=https://connectapi.garmin.com/di-oauth2-service/oauth/token`
+  - `GARMIN_API_BASE_URL=https://apis.garmin.com`
+- Manter `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY` como segredos internos fortes gerados pela infra/app; Garmin não fornece esses valores.
 - Aplicar/validar migrations Prisma no PostgreSQL de produção se ainda não estiverem aplicadas.
 - Implementar auth real/JWT e remover o mecanismo temporário `userId` por query/header e o bootstrap MVP de usuário.
-- Confirmar contratos reais Garmin para token/refresh/revoke e endpoints de Health API antes de habilitar sync real.
+- Confirmar/revisar endpoints de dados Wellness reais e mapeamentos antes de habilitar sync real.
 
 ## Decisões tomadas
-- Manter `GARMIN_REDIRECT_URI` explícita com maior precedência: Garmin exige redirect URL cadastrada exatamente, então variável explícita reduz risco de mismatch.
-- Adicionar fallback por `API_URL`/`APP_URL`: facilita configuração em ambientes sem duplicar URL, mas sem quebrar produção já configurada com `GARMIN_REDIRECT_URI`.
-- Criar usuário MVP em produção de forma idempotente: decisão temporária para compatibilizar o endpoint público atual (`userId=demo-user`) com FK de `GarminConnection`, eliminando 500 até existir auth/signup real.
-- Tratar `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY` como segredos internos: Garmin fornece client id/secret e valida redirect URI; assinatura de state e criptografia local de tokens são responsabilidade da aplicação/infra.
-- Não expor nem inspecionar segredos: diagnóstico feito por código, diff local e respostas HTTP públicas.
+- Trocar authorize/token para OAuth 2.0 PKCE oficial do Garmin Connect Developer Program em vez de insistir em `/oauth/authorize` sob `apis.garmin.com`: corrige o erro `ApplicationNotFound` e alinha com a documentação Garmin.
+- Manter `GARMIN_API_BASE_URL=https://apis.garmin.com` apenas para Wellness REST APIs: separa claramente OAuth de APIs de dados.
+- Persistir `code_verifier` criptografado no `state` assinado: evita criar tabela/coluna temporária só para o callback e não expõe o verifier em texto claro no state.
+- Não registrar client_id do teste no código/documentação: é identificador vindo da mensagem, não necessário para diagnóstico nem para commit.
+- Não expor nem inspecionar segredos: alterações usam placeholders e defaults públicos de endpoint.
 
 ## Riscos e bloqueios conhecidos
-- A correção já está em `origin/dev`, mas precisa ser implantada; produção seguirá retornando 500 no `authorize/start` até deploy da branch corrigida.
+- A correção precisa ser implantada; produção continuará apontando para URL antiga até deploy da branch corrigida.
+- Se o app Garmin ainda não estiver aprovado/habilitado no ambiente correto ou se o redirect URI estiver diferente, a Garmin pode retornar outro erro após corrigirmos o endpoint.
+- O callback/token exchange ainda não foi validado ponta-a-ponta com credenciais reais nesta sessão.
 - O bootstrap MVP em produção permite criação idempotente de usuário pelo `userId` informado enquanto o endpoint estiver público; deve ser removido quando auth real entrar.
-- Sem logs de produção/DB, o diagnóstico de FK é forte pelo comportamento observado e pelo código, mas a confirmação definitiva virá no reteste pós-deploy.
 - `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY` devem estar configuradas com valores longos/aleatórios em produção; não usar defaults de desenvolvimento.
-- Se `GARMIN_REDIRECT_URI`/`API_URL` divergirem do portal Garmin, o redirect pode ser gerado mas o OAuth falhará no provedor.

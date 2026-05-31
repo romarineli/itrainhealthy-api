@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { GarminAdapter } from './garmin.adapter';
 import { decryptSecret, encryptSecret } from './garmin.crypto';
 import { GarminConnectionStatusDto, GarminManualSyncDto, GarminMetricKindDto } from './garmin.dto';
@@ -14,6 +14,7 @@ interface GarminStatePayload {
   userId: string;
   nonce: string;
   exp: number;
+  codeVerifierEncrypted: string;
 }
 
 @Injectable()
@@ -33,8 +34,15 @@ export class GarminService {
 
   async startAuthorization(userId: string) {
     this.assertUserId(userId);
-    const state = this.signState({ userId, nonce: randomBytes(16).toString('base64url'), exp: Date.now() + 10 * 60 * 1000 });
-    const request = this.garminAdapter.buildAuthorizationRequest(state);
+    const codeVerifier = this.generatePkceCodeVerifier();
+    const codeChallenge = this.generatePkceCodeChallenge(codeVerifier);
+    const state = this.signState({
+      userId,
+      nonce: randomBytes(16).toString('base64url'),
+      exp: Date.now() + 10 * 60 * 1000,
+      codeVerifierEncrypted: encryptSecret(codeVerifier, this.stateSecret),
+    });
+    const request = this.garminAdapter.buildAuthorizationRequest(state, codeChallenge);
     await this.ensureTemporaryUserForMvp(userId);
 
     await this.prisma.garminConnection.upsert({
@@ -59,7 +67,8 @@ export class GarminService {
     }
 
     const payload = this.verifyState(state);
-    const tokenSet = await this.garminAdapter.exchangeCodeForToken(code);
+    const codeVerifier = decryptSecret(payload.codeVerifierEncrypted, this.stateSecret);
+    const tokenSet = await this.garminAdapter.exchangeCodeForToken(code, codeVerifier);
     const encryptedAccessToken = this.encryptToken(tokenSet.accessToken);
     const encryptedRefreshToken = tokenSet.refreshToken ? this.encryptToken(tokenSet.refreshToken) : null;
 
@@ -243,6 +252,14 @@ export class GarminService {
     return 'local-dev-only-garmin-token-key-change-me';
   }
 
+  private generatePkceCodeVerifier(): string {
+    return randomBytes(64).toString('base64url');
+  }
+
+  private generatePkceCodeChallenge(codeVerifier: string): string {
+    return createHash('sha256').update(codeVerifier).digest('base64url');
+  }
+
   private signState(payload: GarminStatePayload): string {
     const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
     const signature = createHmac('sha256', this.stateSecret).update(encodedPayload).digest('base64url');
@@ -263,7 +280,7 @@ export class GarminService {
     }
 
     const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as GarminStatePayload;
-    if (!payload.userId || payload.exp < Date.now()) {
+    if (!payload.userId || !payload.codeVerifierEncrypted || payload.exp < Date.now()) {
       throw new BadRequestException('Expired Garmin state.');
     }
 
