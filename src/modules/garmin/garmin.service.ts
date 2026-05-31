@@ -205,6 +205,8 @@ export class GarminService {
         to,
         metrics,
         attempts: fetchResult.attempts,
+        backfillRequested: fetchResult.backfillRequested ?? false,
+        diagnostic: fetchResult.diagnostic,
         lastSyncAt: new Date(),
       };
     } catch (error) {
@@ -213,6 +215,55 @@ export class GarminService {
       await this.prisma.garminConnection.update({ where: { id: connection.id }, data: { status: 'ERROR', lastError: message } });
       throw error;
     }
+  }
+
+  async handleWebhook(summaryType: string | undefined, payload: unknown, providedSecret?: string) {
+    const expectedSecret = this.config.get<string>('GARMIN_WEBHOOK_SECRET');
+    if (expectedSecret && providedSecret !== expectedSecret) {
+      throw new UnauthorizedException('Invalid Garmin webhook secret.');
+    }
+
+    const metricType = this.toMetricKind(summaryType);
+    const records = this.extractWebhookRecords(payload);
+    let imported = 0;
+    let unmatched = 0;
+
+    for (const record of records) {
+      const externalUserId = this.extractExternalUserId(record);
+      if (!externalUserId) {
+        unmatched += 1;
+        continue;
+      }
+      const connection = await this.prisma.garminConnection.findFirst({ where: { externalUserId, provider: GARMIN_PROVIDER } });
+      if (!connection) {
+        unmatched += 1;
+        continue;
+      }
+      const normalized = this.garminAdapter.normalizeWebhookRecords(metricType, [record]);
+      if (normalized.length === 0) {
+        continue;
+      }
+      await this.prisma.garminMetric.createMany({
+        data: normalized.map((metric) => ({
+          userId: connection.userId,
+          connectionId: connection.id,
+          type: metric.type,
+          sourceId: metric.sourceId,
+          measuredAt: metric.measuredAt,
+          startAt: metric.startAt,
+          endAt: metric.endAt,
+          value: metric.value,
+          unit: metric.unit,
+          summary: (metric.summary ?? {}) as Prisma.InputJsonValue,
+          raw: (metric.raw ?? {}) as Prisma.InputJsonValue,
+        })),
+        skipDuplicates: true,
+      });
+      imported += normalized.length;
+      await this.prisma.garminConnection.update({ where: { id: connection.id }, data: { lastSyncAt: new Date(), lastError: null } });
+    }
+
+    return { provider: GARMIN_PROVIDER, received: records.length, imported, unmatched, summaryType: metricType };
   }
 
   private async getUsableAccessToken(connection: { id: number; accessTokenEncrypted: string | null; refreshTokenEncrypted: string | null; tokenExpiresAt: Date | null }) {
@@ -322,6 +373,50 @@ export class GarminService {
     }
 
     return payload;
+  }
+
+  private extractWebhookRecords(payload: unknown): Record<string, unknown>[] {
+    if (Array.isArray(payload)) {
+      return payload.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
+    }
+    if (payload && typeof payload === 'object') {
+      const body = payload as Record<string, unknown>;
+      for (const key of ['activities', 'activityDetails', 'dailies', 'dailySummaries', 'sleeps', 'userMetrics', 'hrv', 'summaries']) {
+        const value = body[key];
+        if (Array.isArray(value)) {
+          return value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
+        }
+      }
+      return [body];
+    }
+    return [];
+  }
+
+  private extractExternalUserId(record: Record<string, unknown>): string | null {
+    for (const key of ['userId', 'userAccessToken', 'garminUserId']) {
+      const value = record[key];
+      if (typeof value === 'string' || typeof value === 'number') {
+        return String(value);
+      }
+    }
+    return null;
+  }
+
+  private toMetricKind(summaryType: string | undefined): GarminMetricKindDto {
+    const normalized = summaryType?.toLowerCase() ?? '';
+    if (normalized.includes('sleep')) {
+      return GarminMetricKindDto.SLEEP;
+    }
+    if (normalized.includes('hrv')) {
+      return GarminMetricKindDto.HRV;
+    }
+    if (normalized.includes('metric') || normalized.includes('vo2')) {
+      return GarminMetricKindDto.VO2_MAX;
+    }
+    if (normalized.includes('training')) {
+      return GarminMetricKindDto.TRAINING_LOAD;
+    }
+    return GarminMetricKindDto.ACTIVITY;
   }
 
   private async ensureTemporaryUserForMvp(userId: string): Promise<GarminUserRef> {

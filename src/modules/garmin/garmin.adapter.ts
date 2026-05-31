@@ -39,6 +39,8 @@ interface GarminFetchAttempt {
 export interface GarminFetchResult {
   metrics: GarminNormalizedMetricInput[];
   attempts: GarminFetchAttempt[];
+  backfillRequested?: boolean;
+  diagnostic?: string;
 }
 
 @Injectable()
@@ -52,7 +54,7 @@ export class GarminAdapter {
   private readonly redirectUri: string;
 
   constructor(private readonly config: ConfigService) {
-    this.baseUrl = this.config.get<string>('GARMIN_API_BASE_URL') ?? 'https://apis.garmin.com';
+    this.baseUrl = this.config.get<string>('GARMIN_API_BASE_URL') ?? 'https://apis.garmin.com/wellness-api/rest';
     this.authorizationUrl = this.config.get<string>('GARMIN_AUTHORIZATION_URL') ?? 'https://connect.garmin.com/oauth2Confirm';
     this.tokenUrl = this.config.get<string>('GARMIN_TOKEN_URL') ?? 'https://connectapi.garmin.com/di-oauth2-service/oauth/token';
     this.clientId = this.config.get<string>('GARMIN_CLIENT_ID') ?? '';
@@ -114,25 +116,39 @@ export class GarminAdapter {
     const attempts: GarminFetchAttempt[] = [];
     const normalized: GarminNormalizedMetricInput[] = [];
 
-    for (const endpoint of endpoints) {
-      const result = await this.fetchEndpoint(accessToken, endpoint, window);
-      attempts.push(result.attempt);
-      normalized.push(...result.metrics);
+    for (const chunk of this.splitIntoUploadChunks(window.from, window.to)) {
+      for (const endpoint of endpoints) {
+        const result = await this.fetchEndpoint(accessToken, endpoint, chunk);
+        attempts.push(result.attempt);
+        normalized.push(...result.metrics);
+      }
     }
 
     const okAttempts = attempts.filter((attempt) => attempt.ok);
     if (okAttempts.length === 0 && attempts.length > 0) {
+      const backfillAttempts = await this.requestBackfill(accessToken, window, endpoints);
+      attempts.push(...backfillAttempts);
+      const backfillRequested = backfillAttempts.some((attempt) => attempt.ok);
+      if (backfillRequested) {
+        return {
+          metrics: [],
+          attempts,
+          backfillRequested: true,
+          diagnostic: 'Garmin accepted a backfill request. Historical summaries are delivered asynchronously to the webhook URL configured in the Garmin portal.',
+        };
+      }
+
       const statuses = attempts.map((attempt) => `${attempt.path}:${attempt.status}`).join(', ');
       throw new Error(
-        `Garmin Wellness pull did not return enabled endpoints (${statuses}). Confirm Health/Activity API permissions, summary types and whether this app requires webhook/backfill enablement in Garmin portal.`,
+        `Garmin Wellness pull/backfill did not return enabled endpoints (${statuses}). Configure Health/Activity API summary permissions and a webhook callback in Garmin Developer Portal. Pull endpoints use uploadStartTimeInSeconds/uploadEndTimeInSeconds with windows <= 24h; historical data requires /backfill/{summaryType} and arrives asynchronously by webhook.`,
       );
     }
 
     return { metrics: normalized, attempts };
   }
 
-  private async fetchEndpoint(accessToken: string, endpoint: GarminEndpointCandidate, window: GarminSyncWindow) {
-    const url = new URL(endpoint.path, this.baseUrl.replace(/\/$/, '') + '/');
+  private async fetchEndpoint(accessToken: string, endpoint: GarminEndpointCandidate, window: { from: Date; to: Date }) {
+    const url = this.buildGarminUrl(endpoint.path);
     const startSeconds = Math.floor(window.from.getTime() / 1000).toString();
     const endSeconds = Math.floor(window.to.getTime() / 1000).toString();
     // Garmin Health API summary pulls/backfills commonly use upload time windows. Keep a small, explicit set of params
@@ -165,6 +181,36 @@ export class GarminAdapter {
     }
   }
 
+  private async requestBackfill(accessToken: string, window: GarminSyncWindow, endpoints: GarminEndpointCandidate[]): Promise<GarminFetchAttempt[]> {
+    const attempts: GarminFetchAttempt[] = [];
+    const summaryTypes = Array.from(new Set(endpoints.map((endpoint) => this.toBackfillSummaryType(endpoint)).filter(Boolean)));
+    for (const summaryType of summaryTypes) {
+      const url = this.buildGarminUrl(`/backfill/${summaryType}`);
+      url.searchParams.set('summaryStartTimeInSeconds', Math.floor(window.from.getTime() / 1000).toString());
+      url.searchParams.set('summaryEndTimeInSeconds', Math.floor(window.to.getTime() / 1000).toString());
+      try {
+        const response = await fetch(url, { headers: { accept: 'application/json', authorization: `Bearer ${accessToken}` } });
+        const body = await response.text();
+        attempts.push({
+          path: `/backfill/${summaryType}`,
+          status: response.status,
+          ok: response.ok,
+          message: response.ok ? 'backfill_requested' : body.slice(0, 200),
+          records: 0,
+        });
+      } catch (error) {
+        attempts.push({
+          path: `/backfill/${summaryType}`,
+          status: 0,
+          ok: false,
+          message: error instanceof Error ? error.message : 'Unknown Garmin backfill error',
+          records: 0,
+        });
+      }
+    }
+    return attempts;
+  }
+
   private resolveEndpointCandidates(metrics: GarminMetricKindDto[]): GarminEndpointCandidate[] {
     const configured = this.config.get<string>('GARMIN_SYNC_ENDPOINTS');
     if (configured) {
@@ -179,12 +225,13 @@ export class GarminAdapter {
     }
 
     const defaults: GarminEndpointCandidate[] = [
-      { metric: GarminMetricKindDto.ACTIVITY, path: '/wellness-api/rest/activities' },
-      { metric: GarminMetricKindDto.ACTIVITY, path: '/wellness-api/rest/activityDetails' },
-      { metric: GarminMetricKindDto.SLEEP, path: '/wellness-api/rest/sleeps' },
-      { metric: GarminMetricKindDto.HRV, path: '/wellness-api/rest/hrv' },
-      { metric: GarminMetricKindDto.VO2_MAX, path: '/wellness-api/rest/userMetrics' },
-      { metric: GarminMetricKindDto.TRAINING_LOAD, path: '/wellness-api/rest/trainingLoad' },
+      { metric: GarminMetricKindDto.ACTIVITY, path: '/activities' },
+      { metric: GarminMetricKindDto.ACTIVITY, path: '/activityDetails' },
+      { metric: GarminMetricKindDto.ACTIVITY, path: '/dailies' },
+      { metric: GarminMetricKindDto.SLEEP, path: '/sleeps' },
+      { metric: GarminMetricKindDto.HRV, path: '/hrv' },
+      { metric: GarminMetricKindDto.VO2_MAX, path: '/userMetrics' },
+      { metric: GarminMetricKindDto.TRAINING_LOAD, path: '/userMetrics' },
     ];
 
     const wanted = new Set(metrics);
@@ -215,7 +262,11 @@ export class GarminAdapter {
     return [];
   }
 
-  private normalizeRecord(metric: GarminMetricKindDto, record: Record<string, unknown>, index: number, window: GarminSyncWindow): GarminNormalizedMetricInput {
+  normalizeWebhookRecords(metric: GarminMetricKindDto, payload: unknown): GarminNormalizedMetricInput[] {
+    return this.extractRecords(payload).map((record, index) => this.normalizeRecord(metric, record, index, { from: new Date(), to: new Date() }));
+  }
+
+  private normalizeRecord(metric: GarminMetricKindDto, record: Record<string, unknown>, index: number, window: { from: Date; to: Date }): GarminNormalizedMetricInput {
     const startAt = this.parseDate(record.startTimeInSeconds ?? record.startTimeOffsetInSeconds ?? record.startTimeLocal ?? record.startTimeGmt);
     const measuredAt =
       this.parseDate(record.summaryDate ?? record.calendarDate ?? record.startTimeInSeconds ?? record.uploadStartTimeInSeconds ?? record.startTimeLocal ?? record.startTimeGmt) ??
@@ -303,6 +354,48 @@ export class GarminAdapter {
       vo2Max: record.vo2Max ?? record.genericVo2Max ?? record.runningVo2Max ?? record.cyclingVo2Max,
       trainingLoad: record.trainingLoad ?? record.acuteTrainingLoad,
     };
+  }
+
+  private splitIntoUploadChunks(from: Date, to: Date): Array<{ from: Date; to: Date }> {
+    const maxChunkMs = 24 * 60 * 60 * 1000 - 1000;
+    const chunks: Array<{ from: Date; to: Date }> = [];
+    let cursor = from.getTime();
+    const end = to.getTime();
+    while (cursor < end) {
+      const chunkEnd = Math.min(cursor + maxChunkMs, end);
+      chunks.push({ from: new Date(cursor), to: new Date(chunkEnd) });
+      cursor = chunkEnd + 1000;
+    }
+    return chunks.length ? chunks : [{ from, to }];
+  }
+
+  private buildGarminUrl(path: string): URL {
+    if (/^https?:\/\//i.test(path)) {
+      return new URL(path);
+    }
+    return new URL(path.replace(/^\//, ''), this.baseUrl.replace(/\/$/, '') + '/');
+  }
+
+  private toBackfillSummaryType(endpoint: GarminEndpointCandidate): string | null {
+    if (endpoint.path.includes('activityDetails')) {
+      return 'activityDetails';
+    }
+    if (endpoint.path.includes('activities')) {
+      return 'activities';
+    }
+    if (endpoint.path.includes('dailies')) {
+      return 'dailies';
+    }
+    if (endpoint.path.includes('sleeps')) {
+      return 'sleeps';
+    }
+    if (endpoint.path.includes('userMetrics')) {
+      return 'userMetrics';
+    }
+    if (endpoint.path.includes('hrv')) {
+      return 'hrv';
+    }
+    return null;
   }
 
   private async requestToken(payload: URLSearchParams, operation: string): Promise<GarminTokenSet> {

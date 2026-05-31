@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, Logger, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Logger, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../auth/auth.service';
 import { RequestWithUser } from '../auth/auth.types';
@@ -95,6 +95,16 @@ export class GarminController {
   @UseGuards(JwtAuthGuard)
   sync(@Req() request: RequestWithUser, @Body() dto: GarminManualSyncDto) {
     return this.garminService.sync(request.user!.id, dto ?? {});
+  }
+
+  @Post('webhook')
+  webhook(@Body() payload: unknown, @Headers('x-garmin-webhook-secret') secret?: string) {
+    return this.garminService.handleWebhook(undefined, payload, secret);
+  }
+
+  @Post('webhook/:summaryType')
+  webhookByType(@Param('summaryType') summaryType: string, @Body() payload: unknown, @Headers('x-garmin-webhook-secret') secret?: string) {
+    return this.garminService.handleWebhook(summaryType, payload, secret);
   }
 
   private buildCallbackRedirectUrl(result: 'success' | 'error', message?: string): string {

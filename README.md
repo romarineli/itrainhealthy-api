@@ -99,9 +99,12 @@ Fluxo disponível para teste:
 ## Sync Garmin MVP
 
 - `POST /api/garmin/sync` — protegido por Bearer JWT; usa a conexão Garmin do usuário autenticado, renova access token via refresh token quando necessário e tenta buscar dados reais da Wellness/Activity API.
-- Dados normalizados são persistidos em `GarminMetric` com `raw`/`summary` para refinamento posterior do mapeamento.
+- Pull usa `GARMIN_API_BASE_URL=https://apis.garmin.com/wellness-api/rest`, paths relativos (`/activities`, `/activityDetails`, `/dailies`, `/sleeps`, `/hrv`, `/userMetrics`) e janelas de até 24h com `uploadStartTimeInSeconds`/`uploadEndTimeInSeconds`.
+- Se pull não estiver habilitado para o app/summary type, o backend tenta solicitar backfill em `/backfill/{summaryType}` com `summaryStartTimeInSeconds`/`summaryEndTimeInSeconds`. Backfill é assíncrono: os dados chegam por webhook.
+- Webhooks disponíveis para configurar no portal Garmin: `POST /api/garmin/webhook` ou `POST /api/garmin/webhook/:summaryType` (`activities`, `activityDetails`, `dailies`, `sleeps`, `userMetrics`). Se `GARMIN_WEBHOOK_SECRET` estiver definido, enviar header `x-garmin-webhook-secret`.
+- Dados normalizados recebidos por pull ou webhook são persistidos em `GarminMetric` com `raw`/`summary` para refinamento posterior do mapeamento.
 - `GET /api/garmin/status` retorna `lastSyncAt`, `lastError` e até 5 `recentMetrics` para o dashboard.
-- Se a conta/app Garmin não tiver endpoints pull habilitados ou exigir webhook/backfill, o sync registra erro claro sem expor tokens. `GARMIN_SYNC_ENDPOINTS` permite configurar paths exatos liberados no portal.
+- `GARMIN_SYNC_ENDPOINTS` permite configurar paths exatos liberados no portal quando diferirem do default.
 
 ## Consentimento LGPD MVP
 
