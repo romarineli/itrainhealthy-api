@@ -89,6 +89,13 @@ Fluxo disponível para teste:
 3. `GET /api/auth/me` exige `Authorization: Bearer <token>`.
 4. Rotas Garmin aceitam JWT e usam o `sub` do token como `User.uuid`; `x-user-id`/`userId` seguem apenas como fallback temporário para testes antigos.
 
+## Perfil atleta MVP
+
+- `GET /api/athlete-profile/me` — protegido por Bearer JWT; retorna o perfil do usuário autenticado ou `null`.
+- `PUT /api/athlete-profile/me` / `PATCH /api/athlete-profile/me` — protegido por Bearer JWT; faz upsert do perfil do usuário autenticado.
+- Campos mínimos: `displayName`, `birthDate`, `gender`, `heightCm`, `weightKg`, `primarySport`, `trainingGoal`, `experienceLevel`, `weeklyTrainingDays`, `timezone`.
+- O perfil usa `id Int` interno e expõe apenas o `uuid` público como `id` na API.
+
 ## Consentimento LGPD MVP
 
 - `GET /api/consents/status` — protegido por Bearer JWT; retorna consentimentos obrigatórios e `allAccepted`.

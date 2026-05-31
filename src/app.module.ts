@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AthleteProfileModule } from './modules/athlete-profile/athlete-profile.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ConsentsModule } from './modules/consents/consents.module';
 import { GarminModule } from './modules/garmin/garmin.module';
@@ -17,6 +18,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaModule,
     HealthModule,
     AuthModule,
+    AthleteProfileModule,
     UsersModule,
     ProfileModule,
     ConsentsModule,
