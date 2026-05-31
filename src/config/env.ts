@@ -9,6 +9,8 @@ const envSchema = z.object({
   API_URL: z.string().url().optional(),
   FRONTEND_URL: z.string().url().optional(),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  JWT_SECRET: z.string().optional().default(''),
+  JWT_EXPIRES_IN_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 7),
   GARMIN_CLIENT_ID: z.string().optional().default(''),
   GARMIN_CLIENT_SECRET: z.string().optional().default(''),
   GARMIN_REDIRECT_URI: z.string().url().optional(),

@@ -65,6 +65,9 @@ prisma/schema.prisma  # schema inicial PostgreSQL
 
 - `GET /health`
 - `GET /api/auth/status`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me` — protegido por Bearer JWT.
 - `GET /api/users/me`
 - `GET /api/profile/me`
 - `GET /api/consents`
@@ -77,6 +80,20 @@ prisma/schema.prisma  # schema inicial PostgreSQL
 - `GET /api/whatsapp/status`
 - `GET /api/readiness/today`
 
+## Auth mínimo MVP
+
+Fluxo disponível para teste:
+
+1. `POST /api/auth/register` com `{ "email", "password", "name" }` cria usuário com senha hasheada via `scrypt` e retorna JWT.
+2. `POST /api/auth/login` com `{ "email", "password" }` retorna JWT.
+3. `GET /api/auth/me` exige `Authorization: Bearer <token>`.
+4. Rotas Garmin aceitam JWT e usam o `sub` do token como usuário; `x-user-id`/`userId` seguem apenas como fallback temporário para testes antigos.
+
+Variáveis Auth:
+
+- `JWT_SECRET` — segredo interno para assinar JWT; obrigatório em produção e não fornecido por terceiros.
+- `JWT_EXPIRES_IN_SECONDS` — TTL do access token; default local/MVP `604800`.
+
 ## Integração Garmin MVP v1
 
 A base de integração Garmin está preparada no backend, sem credenciais reais no repositório.
@@ -84,10 +101,9 @@ A base de integração Garmin está preparada no backend, sem credenciais reais 
 Fluxo disponível:
 
 1. Configure `.env` a partir de `.env.example`.
-2. Enquanto não há auth real, envie o usuário temporariamente via header `x-user-id` ou query `userId`.
-   - Ex.: `curl -H 'x-user-id: demo-user' http://localhost:3000/api/garmin/status`
-   - No MVP, o start OAuth cria/garante um usuário placeholder para permitir o FK do Prisma até existir auth real.
-   - TODO controlado: substituir por subject autenticado via middleware/JWT e remover criação temporária.
+2. Preferencialmente envie `Authorization: Bearer <token>` obtido em `/api/auth/login` ou `/api/auth/register`.
+   - Fallback temporário: `x-user-id` ou query `userId` ainda funcionam para não quebrar testes antigos.
+   - TODO controlado: tornar JWT obrigatório e remover fallback temporário.
 3. Inicie OAuth em `GET /api/garmin/authorize/start`.
 4. A Garmin deve redirecionar para o backend em `GET /api/garmin/callback?code=...&state=...` para troca segura do code por tokens.
 5. Após processar o callback, o backend redireciona o navegador para o frontend em `GARMIN_SUCCESS_REDIRECT_URL` ou `GARMIN_ERROR_REDIRECT_URL`, sem expor `code`, `state` ou tokens. Para teste/API, envie `Accept: application/json` ou `?format=json` para receber JSON.

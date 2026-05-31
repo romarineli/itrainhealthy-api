@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Headers, Logger, Post, Query, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AuthService } from '../auth/auth.service';
 import { GarminDisconnectDto, GarminManualSyncDto } from './garmin.dto';
 import { GarminService } from './garmin.service';
 
@@ -14,16 +15,25 @@ export class GarminController {
   constructor(
     private readonly garminService: GarminService,
     private readonly config: ConfigService,
+    private readonly authService: AuthService,
   ) {}
 
   @Get('authorize/start')
-  startAuthorization(@Headers('x-user-id') headerUserId?: string, @Query('userId') queryUserId?: string) {
-    return this.garminService.startAuthorization(this.resolveUserId(headerUserId, queryUserId));
+  startAuthorization(
+    @Headers('authorization') authorization?: string,
+    @Headers('x-user-id') headerUserId?: string,
+    @Query('userId') queryUserId?: string,
+  ) {
+    return this.garminService.startAuthorization(this.resolveUserId(authorization, headerUserId, queryUserId));
   }
 
   @Get('connect')
-  getConnectUrl(@Headers('x-user-id') headerUserId?: string, @Query('userId') queryUserId?: string) {
-    return this.garminService.startAuthorization(this.resolveUserId(headerUserId, queryUserId));
+  getConnectUrl(
+    @Headers('authorization') authorization?: string,
+    @Headers('x-user-id') headerUserId?: string,
+    @Query('userId') queryUserId?: string,
+  ) {
+    return this.garminService.startAuthorization(this.resolveUserId(authorization, headerUserId, queryUserId));
   }
 
   @Get('callback')
@@ -51,31 +61,42 @@ export class GarminController {
   }
 
   @Get('status')
-  getStatus(@Headers('x-user-id') headerUserId?: string, @Query('userId') queryUserId?: string) {
-    return this.garminService.getStatus(this.resolveUserId(headerUserId, queryUserId));
+  getStatus(
+    @Headers('authorization') authorization?: string,
+    @Headers('x-user-id') headerUserId?: string,
+    @Query('userId') queryUserId?: string,
+  ) {
+    return this.garminService.getStatus(this.resolveUserId(authorization, headerUserId, queryUserId));
   }
 
   @Delete('disconnect')
   disconnect(
     @Body() dto: GarminDisconnectDto,
+    @Headers('authorization') authorization?: string,
     @Headers('x-user-id') headerUserId?: string,
     @Query('userId') queryUserId?: string,
   ) {
-    return this.garminService.disconnect(this.resolveUserId(headerUserId, queryUserId), dto?.revokeRemote ?? false);
+    return this.garminService.disconnect(this.resolveUserId(authorization, headerUserId, queryUserId), dto?.revokeRemote ?? false);
   }
 
   @Post('disconnect')
   disconnectPost(
     @Body() dto: GarminDisconnectDto,
+    @Headers('authorization') authorization?: string,
     @Headers('x-user-id') headerUserId?: string,
     @Query('userId') queryUserId?: string,
   ) {
-    return this.garminService.disconnect(this.resolveUserId(headerUserId, queryUserId), dto?.revokeRemote ?? false);
+    return this.garminService.disconnect(this.resolveUserId(authorization, headerUserId, queryUserId), dto?.revokeRemote ?? false);
   }
 
   @Post('sync')
-  sync(@Body() dto: GarminManualSyncDto, @Headers('x-user-id') headerUserId?: string, @Query('userId') queryUserId?: string) {
-    return this.garminService.sync(this.resolveUserId(headerUserId, queryUserId), dto ?? {});
+  sync(
+    @Body() dto: GarminManualSyncDto,
+    @Headers('authorization') authorization?: string,
+    @Headers('x-user-id') headerUserId?: string,
+    @Query('userId') queryUserId?: string,
+  ) {
+    return this.garminService.sync(this.resolveUserId(authorization, headerUserId, queryUserId), dto ?? {});
   }
 
   private buildCallbackRedirectUrl(result: 'success' | 'error', message?: string): string {
@@ -113,8 +134,9 @@ export class GarminController {
     return 'connection_failed';
   }
 
-  private resolveUserId(headerUserId?: string, queryUserId?: string): string {
-    // TODO(auth): replace this temporary MVP user selector with authenticated subject from auth middleware/JWT.
-    return headerUserId || queryUserId || '';
+  private resolveUserId(authorization?: string, headerUserId?: string, queryUserId?: string): string {
+    const authenticatedUser = this.authService.getUserFromAuthorization(authorization);
+    // JWT subject wins. x-user-id/query remain as temporary backwards-compatible MVP fallback.
+    return authenticatedUser?.id || headerUserId || queryUserId || '';
   }
 }
