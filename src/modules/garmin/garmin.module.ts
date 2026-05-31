@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
+import { GarminAdapter } from './garmin.adapter';
 import { GarminController } from './garmin.controller';
-import { StubGarminAdapter } from './garmin.adapter';
 import { GarminService } from './garmin.service';
 
-@Module({ controllers: [GarminController], providers: [GarminService, StubGarminAdapter] })
+@Module({ controllers: [GarminController], providers: [GarminService, GarminAdapter] })
 export class GarminModule {}

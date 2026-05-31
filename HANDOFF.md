@@ -6,46 +6,53 @@
 
 ## O que foi feito
 - Lido o contexto histórico deste `HANDOFF.md` antes de executar o escopo.
-- Confirmado projeto iTrain Healthy:
+- Confirmado projeto iTrain Healthy pelo canal `#itrainhealthy`:
   - Backend/API: `/Users/irene/projects/itrainhealthy-api`
-  - Frontend/Web: `/Users/irene/projects/itrainhealthy` (não alterado nesta sessão)
+  - Frontend/Web: `/Users/irene/projects/itrainhealthy` (inspecionado; não alterado nesta sessão)
   - Handoff: `/Users/irene/projects/itrainhealthy-api/HANDOFF.md`
-- Criada branch local `tandy/migrate-backend-scaffold-nestjs` a partir de `main` para evitar commit direto na branch base.
-- Migrado o scaffold inicial do backend de Express para NestJS, mantendo Node.js + TypeScript + Prisma + PostgreSQL.
-- Criada estrutura NestJS idiomática com `AppModule`, `main.ts`, `HealthModule/HealthController`, módulos `auth`, `users`, `profile`, `consents`, `garmin`, `whatsapp` e `readiness`.
-- Implementado `GET /health` via controller NestJS, retornando `{ status: "ok", service: "itrainhealthy-api" }`.
-- Criado `PrismaModule` global e `PrismaService` injetável. O serviço não força conexão no bootstrap para permitir health check sem banco local ativo; a conexão acontecerá quando operações Prisma reais forem usadas.
-- Preservado `prisma/schema.prisma` inicial com modelos `User`, `Profile`, `Consent`, `Integration` e `ReadinessSnapshot`.
-- Atualizados `package.json`, `package-lock.json`, `tsconfig.json`, `nest-cli.json`, `README.md` e ESLint config para NestJS.
-- Mantidos adapters stubs para Garmin e WhatsApp, agora como providers injetáveis NestJS.
-- Executadas validações:
-  - `npm install` — sucesso; após atualização para NestJS 11, `npm audit --omit=dev` retornou 0 vulnerabilidades.
-  - `npm run prisma:generate` — sucesso.
-  - `npm run lint` — sucesso.
-  - `npm run build` — sucesso.
-  - `DATABASE_URL='postgresql://postgres:postgres@localhost:5432/itrainhealthy?schema=public' npm run start` + `curl http://localhost:3000/health` — sucesso para health check.
-- Não foram adicionados tokens ou segredos; `.env` permanece ignorado e somente `.env.example` contém placeholders.
+- Mantida a branch local `tandy/migrate-backend-scaffold-nestjs`, que estava com working tree limpo, preservando o scaffold NestJS existente.
+- Implementada foundation Garmin no backend NestJS:
+  - `GET /api/garmin/authorize/start` para iniciar OAuth.
+  - Alias temporário `GET /api/garmin/connect` preservado para compatibilidade.
+  - `GET /api/garmin/callback` para receber `code/state` e persistir tokens criptografados.
+  - `GET /api/garmin/status` para status da conexão.
+  - `DELETE /api/garmin/disconnect` e `POST /api/garmin/disconnect` para desconexão local e tentativa futura de revoke remoto.
+  - `POST /api/garmin/sync` para sync manual inicial, com janela padrão de últimos 90 dias.
+- Criados DTOs/interfaces para token exchange/refresh, status, disconnect, sync manual e métricas normalizadas base: HRV, sono, VO2, atividades e carga de treino.
+- Substituído adapter stub Garmin por adapter configurável via env para OAuth/token/refresh e stub seguro para endpoints de dados, sem inventar contrato Garmin não aprovado.
+- Implementada assinatura de `state` OAuth e criptografia AES-256-GCM para tokens em repouso; tokens não são expostos em logs.
+- Implementado userId temporário via `x-user-id` ou query `userId`, documentado como TODO controlado para futura auth real. Em ambiente não-produção, o start OAuth cria usuário placeholder para satisfazer FK Prisma; em produção não cria.
+- Atualizado `prisma/schema.prisma` com `GarminConnection`, `GarminSyncLog`, `GarminMetric`, `GarminSyncStatus` e `GarminMetricType`.
+- Criada migration SQL local em `prisma/migrations/20260531000000_add_garmin_foundation/migration.sql` via `prisma migrate diff --from-empty`; não aplicada em banco local nesta sessão.
+- Atualizados `.env.example`, `src/config/env.ts` e `README.md` com variáveis e instruções Garmin.
+- Validações executadas com sucesso no backend:
+  - `npm run prisma:generate`
+  - `npm run lint`
+  - `npm run build`
 
 ## Pendente / próximos passos
-- Implementar autenticação real e sessão/usuário atual além dos stubs de MVP.
-- Implementar OAuth Garmin real, callback, armazenamento seguro/criptografado de tokens e sincronização inicial de dados.
-- Definir e implementar fórmula v1 do score de prontidão.
-- Implementar consentimentos reais para Garmin, WhatsApp, termos de uso e política de privacidade.
-- Implementar provider WhatsApp real e templates/mensagens com opt-in explícito.
-- Conectar frontend aos endpoints reais quando contratos deixarem de ser stubs.
-- Adicionar testes automatizados (unitários/integrados) quando os fluxos reais forem implementados.
-- Criar migrations Prisma reais com banco PostgreSQL disponível (`npm run prisma:migrate`).
+- Obter credenciais reais Garmin e validar app/API aprovada.
+- Confirmar contratos reais da Garmin para authorize/token/refresh/revoke e endpoints de dados Health API; ajustar paths/payloads do adapter conforme documentação aprovada.
+- Aplicar migration em PostgreSQL real/local e validar fluxo com dados persistidos.
+- Implementar mapeamento real de payloads Garmin para `GarminMetric`.
+- Implementar auth real/JWT e substituir o `x-user-id`/`userId` temporário e criação placeholder de usuário.
+- Conectar frontend ao endpoint `GET /api/garmin/authorize/start` quando UX do login/usuário estiver definida.
+- Adicionar testes unitários/integrados para state OAuth, criptografia, callback, disconnect e sync.
+- Definir e implementar fórmula v1 do score de prontidão usando métricas normalizadas.
 - Fazer push/PR quando autorizado; nesta sessão foi solicitado explicitamente não fazer push.
 
 ## Decisões tomadas
-- Backend oficial do projeto será NestJS + Prisma + PostgreSQL: Rodrigo questionou corretamente o scaffold Express; o scaffold Express anterior foi corrigido para arquitetura NestJS modular.
-- Usar NestJS 11: evita vulnerabilidades conhecidas reportadas pelo `npm audit` em versões anteriores do ecossistema NestJS/Express transitivo.
-- Não conectar Prisma no bootstrap: mantém `GET /health` disponível mesmo quando o PostgreSQL local não está rodando, sem impedir configuração do Prisma para uso real.
-- Manter Garmin e WhatsApp como adapters stubs injetáveis: evita falsa integração e deixa pontos de extensão claros para provedores reais.
-- Não alterar frontend: o contrato HTTP público inicial foi preservado, então não houve necessidade de ajuste no frontend.
+- Continuar na branch `tandy/migrate-backend-scaffold-nestjs`: a branch estava limpa e contém o scaffold NestJS que deve ser preservado.
+- Não implementar diagnóstico médico: Garmin foundation apenas importa/normaliza métricas base para features futuras de bem-estar/prontidão.
+- Não chamar endpoints de dados Garmin reais sem contrato aprovado: evita falsa integração, vazamento de tokens para URLs incorretas e mapeamentos inválidos.
+- Criptografar tokens antes de persistir: reduz risco de exposição em repouso; `GARMIN_TOKEN_ENCRYPTION_KEY` deve ser configurado antes de produção.
+- Usar `state` OAuth assinado e expirável: reduz risco de callback forjado no fluxo MVP.
+- Manter userId explícito apenas como solução temporária documentada: compatível com futura auth sem transformar em autorização definitiva.
 
 ## Riscos e bloqueios conhecidos
-- Endpoints de auth/users/profile/consents/readiness ainda retornam dados stubs; não há segurança, multiusuário real ou autorização.
-- Tokens Garmin/WhatsApp no schema estão apenas como campos planejados; antes de produção precisam criptografia em repouso e política de rotação.
-- Não há banco PostgreSQL/migrations aplicadas nesta sessão; apenas `prisma generate` e bootstrap/health sem query real foram validados.
-- Repositório local indica remoto `origin/main` como `[gone]`; push/PR exigirá nova validação do remoto/credenciais quando autorizado.
+- Integração Garmin ainda depende de credenciais reais e validação da API aprovada.
+- Endpoints OAuth foram implementados em padrão OAuth2 configurável; Garmin pode exigir ajustes específicos após acesso à documentação/portal do app aprovado.
+- Migration SQL foi gerada, mas não aplicada/validada contra banco PostgreSQL em execução nesta sessão.
+- Sem auth real, `x-user-id`/query `userId` é apenas mecanismo de desenvolvimento/MVP e não deve ir para produção como autorização.
+- `GARMIN_TOKEN_ENCRYPTION_KEY` vazio usa fallback local apenas em desenvolvimento; produção deve bloquear sem chave real.
+- Repositório local já indicava remoto `origin/main` como `[gone]` em sessão anterior; push/PR exigirá nova validação do remoto/credenciais quando autorizado.

@@ -21,6 +21,20 @@ enum IntegrationStatus {
   ERROR
 }
 
+enum GarminSyncStatus {
+  RUNNING
+  SUCCESS
+  ERROR
+}
+
+enum GarminMetricType {
+  HRV
+  SLEEP
+  VO2_MAX
+  ACTIVITY
+  TRAINING_LOAD
+}
+
 model User {
   id           String        @id @default(cuid())
   email        String        @unique
@@ -29,7 +43,10 @@ model User {
   updatedAt    DateTime      @updatedAt
   profile      Profile?
   consents     Consent[]
-  integrations Integration[]
+  integrations       Integration[]
+  garminConnections  GarminConnection[]
+  garminSyncLogs     GarminSyncLog[]
+  garminMetrics      GarminMetric[]
 }
 
 model Profile {
@@ -79,4 +96,70 @@ model ReadinessSnapshot {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+model GarminConnection {
+  id                    String            @id @default(cuid())
+  userId                String
+  provider              String            @default("garmin")
+  status                IntegrationStatus @default(DISCONNECTED)
+  externalUserId        String?
+  accessTokenEncrypted  String?
+  refreshTokenEncrypted String?
+  tokenExpiresAt        DateTime?
+  scopes                String[]          @default([])
+  connectedAt           DateTime?
+  lastSyncAt            DateTime?
+  lastError             String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  syncLogs              GarminSyncLog[]
+  metrics               GarminMetric[]
+
+  @@unique([userId, provider])
+  @@index([status])
+}
+
+model GarminSyncLog {
+  id               String            @id @default(cuid())
+  userId           String
+  connectionId     String
+  status           GarminSyncStatus  @default(RUNNING)
+  startedAt        DateTime          @default(now())
+  finishedAt       DateTime?
+  from             DateTime?
+  to               DateTime?
+  metricsRequested String[]          @default([])
+  recordsImported  Int               @default(0)
+  errorMessage     String?
+  createdAt        DateTime          @default(now())
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection       GarminConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([connectionId, startedAt])
+  @@index([status])
+}
+
+model GarminMetric {
+  id           String           @id @default(cuid())
+  userId       String
+  connectionId String
+  type         GarminMetricType
+  sourceId     String?
+  measuredAt   DateTime
+  startAt      DateTime?
+  endAt        DateTime?
+  value        Float?
+  unit         String?
+  summary      Json?
+  raw          Json?
+  createdAt    DateTime         @default(now())
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection   GarminConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, type, sourceId, measuredAt])
+  @@index([userId, type, measuredAt])
+  @@index([connectionId, measuredAt])
 }
