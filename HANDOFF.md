@@ -6,7 +6,7 @@
 - Canal/projeto: `#itrainhealthy` / `channel:1510376273623650384` → iTrain Healthy.
 - Backend/API: `/Users/irene/projects/itrainhealthy-api` (alias dispatch: `/workspace/projects/itrainhealthy-api`).
 - Frontend/Web: `/Users/irene/projects/itrainhealthy` (alias dispatch: `/workspace/projects/itrainhealthy`).
-- Último commit backend `dev`: `fix: stabilize garmin oauth start` (hash confirmado no resumo final da sessão).
+- Push backend `dev` realizado para `origin/dev` nesta sessão; hashes confirmados no resumo final.
 
 ## O que foi feito
 - Lido este `HANDOFF.md` antes da execução e feito discovery obrigatório com `pwd` + `git status --short --branch` nos repos backend e frontend.
@@ -21,12 +21,13 @@
   - `.env.example`: documentadas `APP_URL`, `API_URL` e exigência de redirect Garmin exato.
 - Documentado tecnicamente em `.env.example` e neste handoff que `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY` são segredos internos da aplicação/infra, não são fornecidos pela Garmin, e devem ser gerados como strings aleatórias fortes.
 - Revisado diff antes de commit/push; não foram identificados segredos reais commitados, apenas placeholders vazios e URLs públicas locais/produção.
-- Validação executada no backend com sucesso:
+- Validação executada no backend com sucesso antes do commit e novamente após rebase com `origin/dev`:
   - `npm run build`
   - `npm run lint`
+- Commit da correção Garmin OAuth criado, rebaseado sobre `origin/dev` após entrada de commits remotos `mirror`, e push concluído para `origin/dev`.
 
 ## Pendente / próximos passos
-- Fazer deploy da branch `dev`/correção para produção e retestar `GET /api/garmin/authorize/start?userId=demo-user`.
+- Fazer deploy da branch `dev` atualizada para produção e retestar `GET /api/garmin/authorize/start?userId=demo-user`.
 - Garantir que a URL cadastrada no portal Garmin seja exatamente `https://itrainhealthy-api.xrunai.app/api/garmin/callback` ou igual ao valor efetivo de `GARMIN_REDIRECT_URI` em produção.
 - Configurar em produção segredos fortes gerados pela infra/app: `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY`.
 - Aplicar/validar migrations Prisma no PostgreSQL de produção se ainda não estiverem aplicadas.
@@ -41,7 +42,7 @@
 - Não expor nem inspecionar segredos: diagnóstico feito por código, diff local e respostas HTTP públicas.
 
 ## Riscos e bloqueios conhecidos
-- A correção precisa ser implantada; produção seguirá retornando 500 no `authorize/start` até deploy da branch corrigida.
+- A correção já está em `origin/dev`, mas precisa ser implantada; produção seguirá retornando 500 no `authorize/start` até deploy da branch corrigida.
 - O bootstrap MVP em produção permite criação idempotente de usuário pelo `userId` informado enquanto o endpoint estiver público; deve ser removido quando auth real entrar.
 - Sem logs de produção/DB, o diagnóstico de FK é forte pelo comportamento observado e pelo código, mas a confirmação definitiva virá no reteste pós-deploy.
 - `GARMIN_STATE_SECRET` e `GARMIN_TOKEN_ENCRYPTION_KEY` devem estar configuradas com valores longos/aleatórios em produção; não usar defaults de desenvolvimento.
