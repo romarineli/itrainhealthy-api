@@ -1,6 +1,8 @@
-import { Body, Controller, Delete, Get, Headers, Logger, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Logger, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../auth/auth.service';
+import { RequestWithUser } from '../auth/auth.types';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { GarminDisconnectDto, GarminManualSyncDto } from './garmin.dto';
 import { GarminService } from './garmin.service';
 
@@ -90,13 +92,9 @@ export class GarminController {
   }
 
   @Post('sync')
-  sync(
-    @Body() dto: GarminManualSyncDto,
-    @Headers('authorization') authorization?: string,
-    @Headers('x-user-id') headerUserId?: string,
-    @Query('userId') queryUserId?: string,
-  ) {
-    return this.garminService.sync(this.resolveUserId(authorization, headerUserId, queryUserId), dto ?? {});
+  @UseGuards(JwtAuthGuard)
+  sync(@Req() request: RequestWithUser, @Body() dto: GarminManualSyncDto) {
+    return this.garminService.sync(request.user!.id, dto ?? {});
   }
 
   private buildCallbackRedirectUrl(result: 'success' | 'error', message?: string): string {

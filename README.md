@@ -96,6 +96,13 @@ Fluxo disponível para teste:
 - Campos mínimos: `displayName`, `birthDate`, `gender`, `heightCm`, `weightKg`, `primarySport`, `trainingGoal`, `experienceLevel`, `weeklyTrainingDays`, `timezone`.
 - O perfil usa `id Int` interno e expõe apenas o `uuid` público como `id` na API.
 
+## Sync Garmin MVP
+
+- `POST /api/garmin/sync` — protegido por Bearer JWT; usa a conexão Garmin do usuário autenticado, renova access token via refresh token quando necessário e tenta buscar dados reais da Wellness/Activity API.
+- Dados normalizados são persistidos em `GarminMetric` com `raw`/`summary` para refinamento posterior do mapeamento.
+- `GET /api/garmin/status` retorna `lastSyncAt`, `lastError` e até 5 `recentMetrics` para o dashboard.
+- Se a conta/app Garmin não tiver endpoints pull habilitados ou exigir webhook/backfill, o sync registra erro claro sem expor tokens. `GARMIN_SYNC_ENDPOINTS` permite configurar paths exatos liberados no portal.
+
 ## Consentimento LGPD MVP
 
 - `GET /api/consents/status` — protegido por Bearer JWT; retorna consentimentos obrigatórios e `allAccepted`.

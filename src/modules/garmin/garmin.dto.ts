@@ -29,6 +29,18 @@ export class GarminConnectionStatusDto {
   scopes?: string[];
   connectedAt?: Date | null;
   lastSyncAt?: Date | null;
+  lastError?: string | null;
+  recentMetrics?: GarminMetricSummaryDto[];
+}
+
+export class GarminMetricSummaryDto {
+  id!: string;
+  type!: string;
+  sourceId?: string | null;
+  measuredAt!: Date;
+  value?: number | null;
+  unit?: string | null;
+  summary?: Record<string, unknown> | null;
 }
 
 export class GarminDisconnectDto {
@@ -52,8 +64,6 @@ export class GarminManualSyncDto {
 }
 
 export interface GarminNormalizedMetricInput {
-  userId: string;
-  connectionId: string;
   type: GarminMetricKindDto;
   sourceId?: string;
   measuredAt: Date;

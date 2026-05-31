@@ -115,7 +115,7 @@ export class GarminService {
     if (!connection) {
       return { provider: GARMIN_PROVIDER, connected: false, status: this.garminAdapter.isConfigured() ? 'disconnected' : 'needs_configuration' };
     }
-    return this.toStatus(connection);
+    return this.toStatusWithRecentMetrics(connection);
   }
 
   async disconnect(userId: string, revokeRemote = false) {
@@ -169,7 +169,8 @@ export class GarminService {
 
     try {
       const accessToken = await this.getUsableAccessToken(connection);
-      const normalizedMetrics = await this.garminAdapter.fetchNormalizedMetrics(accessToken, { from, to, metrics });
+      const fetchResult = await this.garminAdapter.fetchNormalizedMetrics(accessToken, { from, to, metrics });
+      const normalizedMetrics = fetchResult.metrics;
 
       if (normalizedMetrics.length > 0) {
         await this.prisma.garminMetric.createMany({
@@ -196,7 +197,16 @@ export class GarminService {
       });
       await this.prisma.garminConnection.update({ where: { id: connection.id }, data: { lastSyncAt: new Date(), lastError: null } });
 
-      return { provider: GARMIN_PROVIDER, status: 'SUCCESS', recordsImported: normalizedMetrics.length, from, to, metrics };
+      return {
+        provider: GARMIN_PROVIDER,
+        status: 'SUCCESS',
+        recordsImported: normalizedMetrics.length,
+        from,
+        to,
+        metrics,
+        attempts: fetchResult.attempts,
+        lastSyncAt: new Date(),
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown Garmin sync error';
       await this.prisma.garminSyncLog.update({ where: { id: syncLog.id }, data: { status: 'ERROR', finishedAt: new Date(), errorMessage: message } });
@@ -229,7 +239,24 @@ export class GarminService {
     return refreshed.accessToken;
   }
 
-  private toStatus(connection: { status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null }): GarminConnectionStatusDto {
+  private async toStatusWithRecentMetrics(connection: { id: number; status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null; lastError: string | null }): Promise<GarminConnectionStatusDto> {
+    const metrics = await this.prisma.garminMetric.findMany({
+      where: { connectionId: connection.id },
+      orderBy: { measuredAt: 'desc' },
+      take: 5,
+    });
+    return { ...this.toStatus(connection), recentMetrics: metrics.map((metric) => ({
+      id: metric.uuid,
+      type: metric.type,
+      sourceId: metric.sourceId,
+      measuredAt: metric.measuredAt,
+      value: metric.value,
+      unit: metric.unit,
+      summary: metric.summary as Record<string, unknown> | null,
+    })) };
+  }
+
+  private toStatus(connection: { status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null; lastError?: string | null }): GarminConnectionStatusDto {
     return {
       provider: GARMIN_PROVIDER,
       connected: connection.status === 'CONNECTED',
@@ -238,6 +265,7 @@ export class GarminService {
       scopes: connection.scopes,
       connectedAt: connection.connectedAt,
       lastSyncAt: connection.lastSyncAt,
+      lastError: connection.lastError,
     };
   }
 
