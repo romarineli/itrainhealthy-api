@@ -6,71 +6,74 @@
 - Canal/projeto: `#itrainhealthy` / `channel:1510376273623650384` → iTrain Healthy.
 - Backend/API: `/Users/irene/projects/itrainhealthy-api` (alias dispatch: `/workspace/projects/itrainhealthy-api`).
 - Frontend/Web: `/Users/irene/projects/itrainhealthy` (alias dispatch: `/workspace/projects/itrainhealthy`).
-- Último push backend `dev`: `6d43a2dde080f5cad435abc41bbfb20e0f7bc814` (`feat: implement garmin manual sync`).
-- Último push frontend `dev`: `1ed8291ffd0531ce49a6843a6a04722ba34ab75f` (`feat: show garmin sync results`).
+- Último push backend `dev`: `28a31dcc4422b0ed3f755558973d3c6fd752b545` (`fix: align garmin sync with wellness backfill`).
+- Último push frontend `dev`: `3f1d7506dd7d39b4dcbbe56ecc06c077600ae213` (`fix: explain garmin backfill sync`).
 
 ## O que foi feito
 - Lido este `HANDOFF.md` e feito discovery obrigatório com `pwd` + `git status --short --branch` nos repos backend e frontend.
-- Mantido Auth mínimo, Consentimento LGPD, Perfil Atleta e OAuth Garmin já validados por Rodrigo.
-- Implementado Sync Garmin manual no backend usando tabelas existentes, sem migration nova:
-  - `POST /api/garmin/sync` agora está protegido por `JwtAuthGuard` e usa exclusivamente o usuário autenticado (`request.user.id`/`User.uuid`).
-  - Serviço resolve `User.uuid` público para `User.id` interno, encontra `GarminConnection`, renova token via refresh token quando expirado e não expõe tokens em respostas/logs.
-  - `GarminAdapter.fetchNormalizedMetrics` deixou de ser stub e passa a tentar chamadas reais contra a API Garmin configurada (`GARMIN_API_BASE_URL`, default `https://apis.garmin.com`).
-  - Tentativas default para paths comuns Wellness/Activity por tipo solicitado:
-    - `/wellness-api/rest/activities`
-    - `/wellness-api/rest/activityDetails`
-    - `/wellness-api/rest/sleeps`
-    - `/wellness-api/rest/hrv`
-    - `/wellness-api/rest/userMetrics`
-    - `/wellness-api/rest/trainingLoad`
-  - Janela enviada por query string com `uploadStartTimeInSeconds` e `uploadEndTimeInSeconds`.
-  - Respostas JSON reais são normalizadas para `GarminMetric` com `type`, `sourceId`, `measuredAt`, `value`, `unit`, `summary` e `raw`.
-  - Respostas HTTP 403/404/erro são registradas como tentativas e, se nenhum endpoint estiver habilitado, o sync falha com mensagem clara orientando confirmar permissões, summary types ou necessidade de webhook/backfill no portal Garmin.
-  - Variável opcional `GARMIN_SYNC_ENDPOINTS` adicionada ao `.env.example` para override dos paths exatos liberados no portal Garmin: formato `METRIC:/path,METRIC:/path`.
-  - `GET /api/garmin/status` agora retorna `lastError` e até 5 `recentMetrics` persistidas para o dashboard.
-- Implementado feedback do Sync Garmin no frontend:
-  - Botão existente “Sync manual” agora exibe resultado com quantidade importada e tentativas/path/status retornados pelo backend.
-  - Dashboard mostra `lastSyncAt`, último erro e lista “Dados reais sincronizados” com métricas recentes (`type`, data e valor/unidade quando disponíveis).
-- Documentação atualizada:
-  - Backend `README.md`: seção Sync Garmin MVP com endpoint protegido, persistência em `GarminMetric`, status/recentMetrics e limitação de endpoints/webhooks.
-  - Frontend `README.md`: dashboard exibe resultado do sync, `lastSyncAt`, erro e métricas recentes.
+- Investigado erro real do Rodrigo: endpoints chamados como `/wellness-api/rest/...` contra `GARMIN_API_BASE_URL=https://apis.garmin.com` retornaram 400/404.
+- Diagnóstico técnico:
+  - A Wellness API REST usa base `https://apis.garmin.com/wellness-api/rest` e paths relativos como `/activities`, `/activityDetails`, `/dailies`, `/sleeps`, `/userMetrics`.
+  - Pull de summaries usa janela por `uploadStartTimeInSeconds`/`uploadEndTimeInSeconds`, mas deve ser feito em janelas curtas; o backend agora quebra em chunks de até 24h.
+  - Dados históricos/anteriores ao token geralmente exigem backfill por `/backfill/{summaryType}` com `summaryStartTimeInSeconds`/`summaryEndTimeInSeconds`.
+  - Backfill é assíncrono: a Garmin entrega summaries via callback/webhook configurado no portal; não retorna os dados imediatamente no botão sync.
+  - `activityDetails` e alguns detalhes dependem de summaryId/dados previamente entregues; não devem ser tratados como lista genérica ilimitada.
+  - `/trainingLoad` não é endpoint REST genérico confiável; removido do default e `TRAINING_LOAD` fica mapeado para `/userMetrics` quando disponível.
+- Corrigido backend Garmin:
+  - Default `GARMIN_API_BASE_URL` mudou para `https://apis.garmin.com/wellness-api/rest`.
+  - Paths default agora são relativos: `/activities`, `/activityDetails`, `/dailies`, `/sleeps`, `/hrv`, `/userMetrics`.
+  - Pull divide intervalos em chunks <= 24h.
+  - Se nenhum pull funcionar, backend tenta solicitar backfill por summary type.
+  - Resposta de sync agora pode retornar `backfillRequested: true` e `diagnostic` explicando que os dados chegarão por webhook.
+  - Mensagem de erro final explica pull/backfill, permissões/summary types e necessidade de webhook no Garmin Developer Portal.
+  - `.env.example` documenta `GARMIN_SYNC_ENDPOINTS`, `GARMIN_WEBHOOK_SECRET` e callbacks a configurar no portal.
+- Implementado webhook Garmin mínimo no backend:
+  - `POST /api/garmin/webhook`
+  - `POST /api/garmin/webhook/:summaryType`
+  - Se `GARMIN_WEBHOOK_SECRET` estiver configurado, exige header `x-garmin-webhook-secret`.
+  - Recebe payloads brutos/arrays, identifica `userId`/`userAccessToken`/`garminUserId`, encontra `GarminConnection.externalUserId`, normaliza e persiste em `GarminMetric` com `raw`/`summary`.
+  - Atualiza `lastSyncAt` na conexão quando importa dados via webhook.
+- Ajustado frontend:
+  - `GarminSyncResponse` aceita `backfillRequested` e `diagnostic`.
+  - Dashboard mostra mensagem específica quando o sync manual apenas solicitou backfill e aguarda webhook.
+- Documentação atualizada no README backend com o fluxo correto: pull curto, backfill assíncrono e webhooks.
 - Validações executadas com sucesso:
-  - Backend: `npx prisma generate`, `npm run build`, `npm run lint`.
+  - Backend: `npm run build`, `npm run lint`.
   - Frontend: `npm run build`, `npm run lint`.
 - Commits/push concluídos em `origin/dev`:
-  - Backend: `6d43a2dde080f5cad435abc41bbfb20e0f7bc814` (`feat: implement garmin manual sync`).
-  - Frontend: `1ed8291ffd0531ce49a6843a6a04722ba34ab75f` (`feat: show garmin sync results`).
+  - Backend: `28a31dcc4422b0ed3f755558973d3c6fd752b545` (`fix: align garmin sync with wellness backfill`).
+  - Frontend: `3f1d7506dd7d39b4dcbbe56ecc06c077600ae213` (`fix: explain garmin backfill sync`).
 
 ## Pendente / próximos passos
 - Deploy backend `origin/dev` e frontend `origin/dev`.
-- Garantir que todas as migrations anteriores já estejam aplicadas:
-  - `npx prisma migrate deploy`.
-- Testar fluxo completo em ambiente com credenciais Garmin reais:
+- Em produção, configurar/confirmar:
+  - `GARMIN_API_BASE_URL=https://apis.garmin.com/wellness-api/rest`.
+  - Opcional `GARMIN_WEBHOOK_SECRET` e header correspondente se o portal permitir header customizado/proxy.
+  - No Garmin Developer Portal, habilitar summary types necessários e configurar callback/webhook para:
+    - `https://itrainhealthy-api.xrunai.app/api/garmin/webhook`
+    - ou callbacks específicos: `/api/garmin/webhook/activities`, `/activityDetails`, `/dailies`, `/sleeps`, `/userMetrics`.
+- Reteste recomendado:
   1. login;
-  2. LGPD aceito;
-  3. perfil atleta completo;
-  4. conectar Garmin;
-  5. clicar “Sync manual”;
-  6. verificar `lastSyncAt`, tentativas e métricas recentes no dashboard;
-  7. conferir registros em `GarminSyncLog` e `GarminMetric`.
-- Se o portal Garmin informar paths diferentes, configurar `GARMIN_SYNC_ENDPOINTS` com os endpoints autorizados.
-- Confirmar com Garmin se o app atual tem Health/Activity API pull habilitado ou se exige webhook/subscription/backfill para entrega de summaries.
+  2. conectar Garmin;
+  3. clicar “Sync manual” com janela curta/default;
+  4. se retornar `backfillRequested`, aguardar entrega no webhook;
+  5. conferir `GarminMetric`, `GarminSyncLog`, `lastSyncAt` e dashboard.
+- Se Garmin informar paths/summary types exatos diferentes, preencher `GARMIN_SYNC_ENDPOINTS` no formato `METRIC:/path,METRIC:/path`.
 - Usar dados sincronizados de `GarminMetric` na fórmula v1 de prontidão/recomendações.
 - Tornar JWT obrigatório também nas rotas Garmin de status/connect/disconnect quando testes legados com `demo-user` não forem mais necessários.
-- Considerar refresh token/cookie httpOnly em etapa posterior; `localStorage` segue como solução MVP/teste.
 
 ## Decisões tomadas
-- Não criar tabela nova para o sync nesta etapa: `GarminMetric` e `GarminSyncLog` já suportam dados normalizados, raw JSON, deduplicação e auditoria básica.
-- Proteger `POST /api/garmin/sync` com JWT obrigatório: sync real manipula dados sensíveis do usuário e não deve aceitar fallback legado.
-- Manter `GET /api/garmin/status` com compatibilidade temporária, mas enriquecido com `lastError`/`recentMetrics`.
-- Persistir `raw` completo da Garmin em `GarminMetric`: permite ajustar mapeamentos depois sem perder payload real, evitando inventar campos clínicos.
-- Implementar endpoints default conservadores e override via `GARMIN_SYNC_ENDPOINTS`: documentação Garmin pública não expõe todos os contratos do app aprovado, então o backend precisa ser configurável por ambiente.
-- Se nenhum endpoint retornar OK, falhar com diagnóstico claro em vez de mascarar como sucesso vazio.
+- Corrigir base URL para o root REST real e usar paths relativos: evita duplicar `/wellness-api/rest` e reduz erro 400 por URL/contrato incorreto.
+- Chunk de 24h para pull: reduz chance de rejeição por janela muito grande e segue padrão de summary upload windows.
+- Backfill como fallback, não como substituto de sync imediato: backfill é assíncrono e depende de webhook.
+- Implementar webhook sem migration nova: payload normalizado cabe em `GarminMetric.raw`/`summary` e vínculo por `GarminConnection.externalUserId`.
+- Manter `GARMIN_SYNC_ENDPOINTS` configurável: contratos exatos variam por app/summary type aprovado no portal Garmin.
+- Não expor tokens em log/resposta; erros mostram paths/status, não credenciais.
 
 ## Riscos e bloqueios conhecidos
-- Garmin Health/Activity API frequentemente depende de habilitação por summary type, permissões do app e/ou fluxo webhook/backfill. Se os endpoints pull default retornarem 403/404, configurar `GARMIN_SYNC_ENDPOINTS` ou habilitar webhook no portal Garmin.
-- Não há token/segredo em logs ou respostas, mas `raw` de saúde é persistido no banco; tratar banco/logs com controles LGPD adequados.
-- Sem migrations anteriores aplicadas, as tabelas `GarminMetric`/`GarminSyncLog` podem não existir ou ter schema antigo.
-- `GARMIN_TOKEN_ENCRYPTION_KEY` deve estar estável; trocar a chave impede descriptografar tokens Garmin já armazenados.
+- Sem webhook configurado no Garmin Developer Portal, backfill pode ser aceito mas nenhum dado chegará ao banco.
+- Se `externalUserId` salvo no OAuth não corresponder ao identificador dos payloads webhook (`userId`/`userAccessToken`), os eventos serão recebidos mas ficarão `unmatched`; ajustar mapeamento conforme payload real.
+- Algumas rotas/summary types podem estar indisponíveis para o app atual até Garmin liberar permissões específicas.
+- `GARMIN_WEBHOOK_SECRET` só funciona se houver forma de enviar header customizado; se o portal não suportar, usar proxy/gateway ou deixar vazio e validar por allowlist/IP futuramente.
+- `GARMIN_TOKEN_ENCRYPTION_KEY` deve permanecer estável; trocar chave impede descriptografar tokens Garmin já armazenados.
 - `localStorage` continua vulnerável a XSS; migrar auth para cookie httpOnly/refresh-token posteriormente.
-- Enquanto fallback `userId` existir em outras rotas Garmin, ainda há fluxo legado; remover quando JWT for obrigatório.
