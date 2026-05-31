@@ -6,69 +6,71 @@
 - Canal/projeto: `#itrainhealthy` / `channel:1510376273623650384` → iTrain Healthy.
 - Backend/API: `/Users/irene/projects/itrainhealthy-api` (alias dispatch: `/workspace/projects/itrainhealthy-api`).
 - Frontend/Web: `/Users/irene/projects/itrainhealthy` (alias dispatch: `/workspace/projects/itrainhealthy`).
-- Último push backend `dev`: `0fe09f99684bebaf5409233b84ac09ef9d1d9439` (`feat: add athlete profile api`).
-- Último push frontend `dev`: `5a5ae9c9988c1e4c271fc68c0875675c53c10bf7` (`feat: add athlete profile gate`).
+- Último push backend `dev`: `6d43a2dde080f5cad435abc41bbfb20e0f7bc814` (`feat: implement garmin manual sync`).
+- Último push frontend `dev`: `1ed8291ffd0531ce49a6843a6a04722ba34ab75f` (`feat: show garmin sync results`).
 
 ## O que foi feito
 - Lido este `HANDOFF.md` e feito discovery obrigatório com `pwd` + `git status --short --branch` nos repos backend e frontend.
-- Mantido Auth mínimo, Consentimento LGPD e fluxo Garmin já validados por Rodrigo.
-- Implementado Perfil Atleta mínimo no backend:
-  - Nova model Prisma `AthleteProfile` com `id Int @id @default(autoincrement())` como PK interna e `uuid String @unique @default(cuid())` como identificador público.
-  - Relação 1:1 com `User` via `userId Int @unique` usando o ID interno sequencial.
-  - Campos mínimos: `displayName`, `birthDate`, `gender`, `heightCm`, `weightKg`, `primarySport`, `trainingGoal`, `experienceLevel`, `weeklyTrainingDays`, `timezone`, `createdAt`, `updatedAt`.
-  - Migration criada: `prisma/migrations/20260531203000_add_athlete_profile/migration.sql`.
-  - Novo módulo Nest `AthleteProfileModule` registrado em `AppModule`.
-  - Endpoints protegidos por Bearer JWT:
-    - `GET /api/athlete-profile/me` retorna perfil do usuário autenticado ou `null`.
-    - `PUT /api/athlete-profile/me` faz upsert do perfil do usuário autenticado.
-    - `PATCH /api/athlete-profile/me` também faz upsert/edição parcial.
-  - DTO com validação básica de tipos, ranges e tamanhos (`heightCm`, `weightKg`, `weeklyTrainingDays`, strings e data ISO).
-  - API expõe `id` como `uuid` público do perfil, nunca o ID inteiro interno.
-- Implementado Perfil Atleta mínimo no frontend:
-  - Client `src/lib/athleteProfileApi.ts` com Bearer JWT.
-  - Gate/form `src/features/athlete-profile/AthleteProfileGate.tsx` após consentimento LGPD.
-  - Se perfil não existe ou está incompleto, dashboard fica bloqueado até salvar campos mínimos.
-  - Dashboard recebeu card/painel de Perfil Atleta e botão simples “Editar perfil”.
-  - Formulário permite editar nome, nascimento, gênero, altura, peso, esporte, objetivo, experiência, dias/semana e timezone.
+- Mantido Auth mínimo, Consentimento LGPD, Perfil Atleta e OAuth Garmin já validados por Rodrigo.
+- Implementado Sync Garmin manual no backend usando tabelas existentes, sem migration nova:
+  - `POST /api/garmin/sync` agora está protegido por `JwtAuthGuard` e usa exclusivamente o usuário autenticado (`request.user.id`/`User.uuid`).
+  - Serviço resolve `User.uuid` público para `User.id` interno, encontra `GarminConnection`, renova token via refresh token quando expirado e não expõe tokens em respostas/logs.
+  - `GarminAdapter.fetchNormalizedMetrics` deixou de ser stub e passa a tentar chamadas reais contra a API Garmin configurada (`GARMIN_API_BASE_URL`, default `https://apis.garmin.com`).
+  - Tentativas default para paths comuns Wellness/Activity por tipo solicitado:
+    - `/wellness-api/rest/activities`
+    - `/wellness-api/rest/activityDetails`
+    - `/wellness-api/rest/sleeps`
+    - `/wellness-api/rest/hrv`
+    - `/wellness-api/rest/userMetrics`
+    - `/wellness-api/rest/trainingLoad`
+  - Janela enviada por query string com `uploadStartTimeInSeconds` e `uploadEndTimeInSeconds`.
+  - Respostas JSON reais são normalizadas para `GarminMetric` com `type`, `sourceId`, `measuredAt`, `value`, `unit`, `summary` e `raw`.
+  - Respostas HTTP 403/404/erro são registradas como tentativas e, se nenhum endpoint estiver habilitado, o sync falha com mensagem clara orientando confirmar permissões, summary types ou necessidade de webhook/backfill no portal Garmin.
+  - Variável opcional `GARMIN_SYNC_ENDPOINTS` adicionada ao `.env.example` para override dos paths exatos liberados no portal Garmin: formato `METRIC:/path,METRIC:/path`.
+  - `GET /api/garmin/status` agora retorna `lastError` e até 5 `recentMetrics` persistidas para o dashboard.
+- Implementado feedback do Sync Garmin no frontend:
+  - Botão existente “Sync manual” agora exibe resultado com quantidade importada e tentativas/path/status retornados pelo backend.
+  - Dashboard mostra `lastSyncAt`, último erro e lista “Dados reais sincronizados” com métricas recentes (`type`, data e valor/unidade quando disponíveis).
 - Documentação atualizada:
-  - Backend `README.md`: endpoints e campos do Perfil Atleta.
-  - Frontend `README.md`: ordem Auth → LGPD → Perfil Atleta → Dashboard.
+  - Backend `README.md`: seção Sync Garmin MVP com endpoint protegido, persistência em `GarminMetric`, status/recentMetrics e limitação de endpoints/webhooks.
+  - Frontend `README.md`: dashboard exibe resultado do sync, `lastSyncAt`, erro e métricas recentes.
 - Validações executadas com sucesso:
   - Backend: `npx prisma generate`, `npm run build`, `npm run lint`.
   - Frontend: `npm run build`, `npm run lint`.
 - Commits/push concluídos em `origin/dev`:
-  - Backend: `0fe09f99684bebaf5409233b84ac09ef9d1d9439` (`feat: add athlete profile api`).
-  - Frontend: `5a5ae9c9988c1e4c271fc68c0875675c53c10bf7` (`feat: add athlete profile gate`).
+  - Backend: `6d43a2dde080f5cad435abc41bbfb20e0f7bc814` (`feat: implement garmin manual sync`).
+  - Frontend: `1ed8291ffd0531ce49a6843a6a04722ba34ab75f` (`feat: show garmin sync results`).
 
 ## Pendente / próximos passos
-- Deploy backend `origin/dev` e aplicar migrations Prisma no ambiente alvo:
+- Deploy backend `origin/dev` e frontend `origin/dev`.
+- Garantir que todas as migrations anteriores já estejam aplicadas:
   - `npx prisma migrate deploy`.
-- Deploy frontend `origin/dev`.
-- Testar fluxo completo:
-  1. abrir app;
-  2. criar conta ou login;
-  3. aceitar consentimento LGPD;
-  4. preencher perfil atleta mínimo;
-  5. confirmar entrada no dashboard;
-  6. editar perfil pelo botão “Editar perfil”;
-  7. conectar Garmin e validar status no mesmo usuário autenticado.
-- Usar dados do `AthleteProfile` na fórmula v1 de prontidão/recomendações quando essa regra for definida.
-- Tornar JWT obrigatório nas rotas Garmin quando testes legados com `demo-user` não forem mais necessários.
+- Testar fluxo completo em ambiente com credenciais Garmin reais:
+  1. login;
+  2. LGPD aceito;
+  3. perfil atleta completo;
+  4. conectar Garmin;
+  5. clicar “Sync manual”;
+  6. verificar `lastSyncAt`, tentativas e métricas recentes no dashboard;
+  7. conferir registros em `GarminSyncLog` e `GarminMetric`.
+- Se o portal Garmin informar paths diferentes, configurar `GARMIN_SYNC_ENDPOINTS` com os endpoints autorizados.
+- Confirmar com Garmin se o app atual tem Health/Activity API pull habilitado ou se exige webhook/subscription/backfill para entrega de summaries.
+- Usar dados sincronizados de `GarminMetric` na fórmula v1 de prontidão/recomendações.
+- Tornar JWT obrigatório também nas rotas Garmin de status/connect/disconnect quando testes legados com `demo-user` não forem mais necessários.
 - Considerar refresh token/cookie httpOnly em etapa posterior; `localStorage` segue como solução MVP/teste.
-- Confirmar/revisar endpoints de dados Wellness reais e mapeamentos antes de habilitar sync real.
 
 ## Decisões tomadas
-- Criar `AthleteProfile` em vez de reaproveitar `Profile`: separa claramente perfil esportivo/saúde do perfil técnico antigo (`Profile`) e evita quebrar stubs existentes.
-- `AthleteProfile.id` é interno sequencial e `AthleteProfile.uuid` é público: mantém o padrão arquitetural atual e evita expor IDs incrementais.
-- Endpoints são sempre `/me` e protegidos por JWT: impede acesso/edição de perfil de outros usuários.
-- Perfil “completo” no frontend exige apenas campos essenciais de personalização inicial: `displayName`, `primarySport`, `trainingGoal`, `experienceLevel`, `weeklyTrainingDays`.
-- Campos clínicos/sensíveis ficaram mínimos e opcionais (`heightCm`, `weightKg`, `birthDate`, `gender`) para reduzir atrito no MVP.
-- `PUT` e `PATCH` compartilham upsert no MVP; DTO aceita payload parcial e backend atualiza apenas campos enviados.
+- Não criar tabela nova para o sync nesta etapa: `GarminMetric` e `GarminSyncLog` já suportam dados normalizados, raw JSON, deduplicação e auditoria básica.
+- Proteger `POST /api/garmin/sync` com JWT obrigatório: sync real manipula dados sensíveis do usuário e não deve aceitar fallback legado.
+- Manter `GET /api/garmin/status` com compatibilidade temporária, mas enriquecido com `lastError`/`recentMetrics`.
+- Persistir `raw` completo da Garmin em `GarminMetric`: permite ajustar mapeamentos depois sem perder payload real, evitando inventar campos clínicos.
+- Implementar endpoints default conservadores e override via `GARMIN_SYNC_ENDPOINTS`: documentação Garmin pública não expõe todos os contratos do app aprovado, então o backend precisa ser configurável por ambiente.
+- Se nenhum endpoint retornar OK, falhar com diagnóstico claro em vez de mascarar como sucesso vazio.
 
 ## Riscos e bloqueios conhecidos
-- Migration anterior estrutural de IDs sequenciais ainda é o maior ponto de atenção em bancos com dados reais; validar em staging/clone antes de produção.
-- Nova migration `AthleteProfile` é aditiva e de baixo risco, mas depende das migrations anteriores já aplicadas porque referencia `User(id)` inteiro.
-- Sem `npx prisma migrate deploy`, endpoints de perfil atleta falharão por tabela ausente.
-- O texto/contrato de LGPD ainda é MVP; revisar juridicamente antes de produção real com dados sensíveis de saúde.
+- Garmin Health/Activity API frequentemente depende de habilitação por summary type, permissões do app e/ou fluxo webhook/backfill. Se os endpoints pull default retornarem 403/404, configurar `GARMIN_SYNC_ENDPOINTS` ou habilitar webhook no portal Garmin.
+- Não há token/segredo em logs ou respostas, mas `raw` de saúde é persistido no banco; tratar banco/logs com controles LGPD adequados.
+- Sem migrations anteriores aplicadas, as tabelas `GarminMetric`/`GarminSyncLog` podem não existir ou ter schema antigo.
+- `GARMIN_TOKEN_ENCRYPTION_KEY` deve estar estável; trocar a chave impede descriptografar tokens Garmin já armazenados.
 - `localStorage` continua vulnerável a XSS; migrar auth para cookie httpOnly/refresh-token posteriormente.
-- Enquanto fallback `userId` existir no Garmin, ainda há fluxo legado; remover quando JWT for obrigatório.
+- Enquanto fallback `userId` existir em outras rotas Garmin, ainda há fluxo legado; remover quando JWT for obrigatório.
