@@ -15,10 +15,15 @@
 - Atualizado `/Users/irene/.openclaw/workspace/fullstack/PROJECTS_INDEX.md` com a regra correta de token GitHub no env global `SANCHO_GITHUB_TOKEN`.
 - Atualizado este `HANDOFF.md` para remover a regra antiga de token no `.env` e registrar a regra correta sem expor segredo.
 - Confirmado que `SANCHO_GITHUB_TOKEN` está definido no env global sem imprimir seu valor.
+- Commitado o handoff do backend com a regra corrigida: `fd5668f` (`docs: update github token handoff rule`).
+- Commitado o índice operacional do workspace com a regra corrigida: `5dda837` (`docs: update itrainhealthy github token rule`).
+- Push seguro executado usando `SANCHO_GITHUB_TOKEN` via `GIT_ASKPASS` temporário, sem imprimir token e sem gravar token no remote.
+- Backend `dev` enviado para `origin/dev`: `bd6aea0..fd5668f`.
+- Frontend `dev` enviado para `origin/dev`: `3f1d750..71fd1ec`.
 
 ## Pendente / próximos passos
-- Enviar `dev` de backend e frontend para `origin/dev` usando autenticação temporária/segura com `SANCHO_GITHUB_TOKEN`.
 - Deploy backend e frontend após o push remoto em `origin/dev`, se esse for o fluxo operacional desejado.
+- Monitorar se o commit final deste handoff pós-push também foi enviado para `origin/dev`.
 - Em produção, confirmar variável `GARMIN_API_BASE_URL=https://apis.garmin.com/wellness-api/rest`; se estiver explicitamente errada (`https://apis.garmin.com`), precisa ser corrigida fora do código.
 - Retestar `/api/garmin/sync` com conta conectada e confirmar resposta 200 com `PARTIAL_FAILURE`/diagnostic quando Garmin retornar 404 por permissão/configuração.
 - Quando chegarem payloads reais de webhook, validar se o identificador (`userId`, `userAccessToken` ou `garminUserId`) bate com `GarminConnection.externalUserId` salvo no OAuth.
