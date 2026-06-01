@@ -40,6 +40,7 @@ export interface GarminFetchResult {
   metrics: GarminNormalizedMetricInput[];
   attempts: GarminFetchAttempt[];
   backfillRequested?: boolean;
+  partialFailure?: boolean;
   diagnostic?: string;
 }
 
@@ -139,9 +140,13 @@ export class GarminAdapter {
       }
 
       const statuses = attempts.map((attempt) => `${attempt.path}:${attempt.status}`).join(', ');
-      throw new Error(
-        `Garmin Wellness pull/backfill did not return enabled endpoints (${statuses}). Configure Health/Activity API summary permissions and a webhook callback in Garmin Developer Portal. Pull endpoints use uploadStartTimeInSeconds/uploadEndTimeInSeconds with windows <= 24h; historical data requires /backfill/{summaryType} and arrives asynchronously by webhook.`,
-      );
+      return {
+        metrics: [],
+        attempts,
+        backfillRequested: false,
+        partialFailure: true,
+        diagnostic: `Garmin Wellness pull/backfill did not return enabled endpoints (${statuses}). This usually means the configured Garmin app does not have these Health/Activity API summary types enabled, the callback URLs are missing/mismatched, or the environment/base URL does not match the approved app. Pull endpoints use uploadStartTimeInSeconds/uploadEndTimeInSeconds with windows <= 24h; historical data requires /backfill/{summaryType} and arrives asynchronously by webhook.`,
+      };
     }
 
     return { metrics: normalized, attempts };

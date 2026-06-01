@@ -143,7 +143,7 @@ Variáveis Garmin:
 - `GARMIN_REDIRECT_URI`
 - `GARMIN_AUTHORIZATION_URL` — endpoint OAuth 2.0 PKCE de autorização (`https://connect.garmin.com/oauth2Confirm`).
 - `GARMIN_TOKEN_URL` — endpoint OAuth 2.0 PKCE de token (`https://connectapi.garmin.com/di-oauth2-service/oauth/token`).
-- `GARMIN_API_BASE_URL` — host das Wellness REST APIs (`https://apis.garmin.com`), não deve ser usado como endpoint de authorize.
+- `GARMIN_API_BASE_URL` — raiz REST da Wellness API (`https://apis.garmin.com/wellness-api/rest`), não deve ser usado como endpoint de authorize.
 - `GARMIN_SUCCESS_REDIRECT_URL` — destino frontend após conexão concluída; default derivado de `FRONTEND_URL`/`APP_URL` + `/integrations/garmin/success`.
 - `GARMIN_ERROR_REDIRECT_URL` — destino frontend após falha no callback; default derivado de `FRONTEND_URL`/`APP_URL` + `/integrations/garmin/error`.
 - `GARMIN_STATE_SECRET` — segredo interno da aplicação para assinatura de `state` OAuth; não é fornecido pela Garmin.

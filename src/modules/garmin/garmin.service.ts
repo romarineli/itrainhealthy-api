@@ -191,28 +191,39 @@ export class GarminService {
         });
       }
 
+      const finishedAt = new Date();
+      const status = fetchResult.partialFailure ? 'PARTIAL_FAILURE' : 'SUCCESS';
       await this.prisma.garminSyncLog.update({
         where: { id: syncLog.id },
-        data: { status: 'SUCCESS', finishedAt: new Date(), recordsImported: normalizedMetrics.length },
+        data: {
+          status: fetchResult.partialFailure ? 'ERROR' : 'SUCCESS',
+          finishedAt,
+          recordsImported: normalizedMetrics.length,
+          errorMessage: fetchResult.partialFailure ? fetchResult.diagnostic : null,
+        },
       });
-      await this.prisma.garminConnection.update({ where: { id: connection.id }, data: { lastSyncAt: new Date(), lastError: null } });
+      await this.prisma.garminConnection.update({
+        where: { id: connection.id },
+        data: { status: 'CONNECTED', lastSyncAt: fetchResult.partialFailure ? connection.lastSyncAt : finishedAt, lastError: fetchResult.partialFailure ? fetchResult.diagnostic : null },
+      });
 
       return {
         provider: GARMIN_PROVIDER,
-        status: 'SUCCESS',
+        status,
         recordsImported: normalizedMetrics.length,
         from,
         to,
         metrics,
         attempts: fetchResult.attempts,
         backfillRequested: fetchResult.backfillRequested ?? false,
+        partialFailure: fetchResult.partialFailure ?? false,
         diagnostic: fetchResult.diagnostic,
-        lastSyncAt: new Date(),
+        lastSyncAt: fetchResult.partialFailure ? connection.lastSyncAt : finishedAt,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown Garmin sync error';
       await this.prisma.garminSyncLog.update({ where: { id: syncLog.id }, data: { status: 'ERROR', finishedAt: new Date(), errorMessage: message } });
-      await this.prisma.garminConnection.update({ where: { id: connection.id }, data: { status: 'ERROR', lastError: message } });
+      await this.prisma.garminConnection.update({ where: { id: connection.id }, data: { status: 'CONNECTED', lastError: message } });
       throw error;
     }
   }
