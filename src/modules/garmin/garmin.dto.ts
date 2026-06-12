@@ -8,6 +8,15 @@ export enum GarminMetricKindDto {
   TRAINING_LOAD = 'TRAINING_LOAD',
 }
 
+export enum GarminBackfillSummaryTypeDto {
+  ACTIVITIES = 'activities',
+  ACTIVITY_DETAILS = 'activityDetails',
+  DAILIES = 'dailies',
+  SLEEPS = 'sleeps',
+  HRV = 'hrv',
+  USER_METRICS = 'userMetrics',
+}
+
 export class GarminTokenExchangeDto {
   @IsString()
   code!: string;
@@ -29,6 +38,9 @@ export class GarminConnectionStatusDto {
   scopes?: string[];
   connectedAt?: Date | null;
   lastSyncAt?: Date | null;
+  lastWebhookAt?: Date | null;
+  historicalBackfillStatus?: string | null;
+  rateLimitedUntil?: Date | null;
   lastError?: string | null;
   recentMetrics?: GarminMetricSummaryDto[];
 }
@@ -61,6 +73,20 @@ export class GarminManualSyncDto {
   @IsOptional()
   @IsEnum(GarminMetricKindDto, { each: true })
   metrics?: GarminMetricKindDto[];
+}
+
+export class GarminBackfillRequestDto {
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+
+  @IsOptional()
+  @IsEnum(GarminBackfillSummaryTypeDto, { each: true })
+  summaryTypes?: GarminBackfillSummaryTypeDto[];
 }
 
 export interface GarminNormalizedMetricInput {

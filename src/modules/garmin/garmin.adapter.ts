@@ -28,7 +28,7 @@ interface GarminEndpointCandidate {
   path: string;
 }
 
-interface GarminFetchAttempt {
+export interface GarminFetchAttempt {
   path: string;
   status: number;
   ok: boolean;
@@ -41,6 +41,8 @@ export interface GarminFetchResult {
   attempts: GarminFetchAttempt[];
   backfillRequested?: boolean;
   partialFailure?: boolean;
+  rateLimited?: boolean;
+  rateLimitedUntil?: Date;
   diagnostic?: string;
 }
 
@@ -49,6 +51,12 @@ export interface GarminDebugHttpResult {
   status: number;
   statusText: string;
   body: unknown;
+}
+
+export interface GarminBackfillWindow {
+  from: Date;
+  to: Date;
+  summaryTypes: string[];
 }
 
 @Injectable()
@@ -129,30 +137,30 @@ export class GarminAdapter {
         const result = await this.fetchEndpoint(accessToken, endpoint, chunk);
         attempts.push(result.attempt);
         normalized.push(...result.metrics);
+
+        if (this.isRateLimitedAttempt(result.attempt)) {
+          const rateLimitedUntil = this.resolveRateLimitedUntil();
+          return {
+            metrics: normalized,
+            attempts,
+            partialFailure: true,
+            rateLimited: true,
+            rateLimitedUntil,
+            diagnostic: `Garmin rate limit reached at ${endpoint.path}. Sync stopped early and will not call more endpoints until ${rateLimitedUntil.toISOString()}.`,
+          };
+        }
       }
     }
 
     const okAttempts = attempts.filter((attempt) => attempt.ok);
     if (okAttempts.length === 0 && attempts.length > 0) {
-      const backfillAttempts = await this.requestBackfill(accessToken, window, endpoints);
-      attempts.push(...backfillAttempts);
-      const backfillRequested = backfillAttempts.some((attempt) => attempt.ok);
-      if (backfillRequested) {
-        return {
-          metrics: [],
-          attempts,
-          backfillRequested: true,
-          diagnostic: 'Garmin accepted a backfill request. Historical summaries are delivered asynchronously to the webhook URL configured in the Garmin portal.',
-        };
-      }
-
       const statuses = attempts.map((attempt) => `${attempt.path}:${attempt.status}`).join(', ');
       return {
         metrics: [],
         attempts,
         backfillRequested: false,
         partialFailure: true,
-        diagnostic: `Garmin Wellness pull/backfill did not return enabled endpoints (${statuses}). This usually means the configured Garmin app does not have these Health/Activity API summary types enabled, the callback URLs are missing/mismatched, or the environment/base URL does not match the approved app. Pull endpoints use uploadStartTimeInSeconds/uploadEndTimeInSeconds with windows <= 24h; historical data requires /backfill/{summaryType} and arrives asynchronously by webhook.`,
+        diagnostic: `Garmin Wellness pull did not return enabled endpoints (${statuses}). Historical data must be requested explicitly through /api/garmin/backfill and delivered asynchronously by webhook; automatic backfill from manual sync is disabled to protect Garmin quota.`,
       };
     }
 
@@ -208,9 +216,10 @@ export class GarminAdapter {
     }
   }
 
-  private async requestBackfill(accessToken: string, window: GarminSyncWindow, endpoints: GarminEndpointCandidate[]): Promise<GarminFetchAttempt[]> {
+  async requestBackfill(accessToken: string, window: GarminBackfillWindow): Promise<GarminFetchAttempt[]> {
+    this.assertConfigured();
     const attempts: GarminFetchAttempt[] = [];
-    const summaryTypes = Array.from(new Set(endpoints.map((endpoint) => this.toBackfillSummaryType(endpoint)).filter(Boolean)));
+    const summaryTypes = Array.from(new Set(window.summaryTypes));
     for (const summaryType of summaryTypes) {
       const url = this.buildGarminUrl(`/backfill/${summaryType}`);
       url.searchParams.set('summaryStartTimeInSeconds', Math.floor(window.from.getTime() / 1000).toString());
@@ -218,13 +227,17 @@ export class GarminAdapter {
       try {
         const response = await fetch(url, { headers: { accept: 'application/json', authorization: `Bearer ${accessToken}` } });
         const body = await response.text();
-        attempts.push({
+        const attempt = {
           path: `/backfill/${summaryType}`,
           status: response.status,
           ok: response.ok,
-          message: response.ok ? 'backfill_requested' : body.slice(0, 200),
+          message: response.ok ? 'backfill_requested' : body.slice(0, 500),
           records: 0,
-        });
+        };
+        attempts.push(attempt);
+        if (this.isRateLimitedAttempt(attempt)) {
+          break;
+        }
       } catch (error) {
         attempts.push({
           path: `/backfill/${summaryType}`,
@@ -236,6 +249,27 @@ export class GarminAdapter {
       }
     }
     return attempts;
+  }
+
+  isRateLimitedAttempt(attempt: Pick<GarminFetchAttempt, 'status' | 'message'>): boolean {
+    return attempt.status === 429 || /rate limit|too many request|quota/i.test(attempt.message ?? '');
+  }
+
+  resolveRateLimitedUntil(): Date {
+    const minutes = Number(this.config.get<string>('GARMIN_RATE_LIMIT_COOLDOWN_MINUTES') ?? '15');
+    const safeMinutes = Number.isFinite(minutes) && minutes > 0 ? minutes : 15;
+    return new Date(Date.now() + safeMinutes * 60_000);
+  }
+
+  metricToSummaryTypes(metric: GarminMetricKindDto): string[] {
+    const mapping: Record<GarminMetricKindDto, string[]> = {
+      [GarminMetricKindDto.ACTIVITY]: ['activities'],
+      [GarminMetricKindDto.SLEEP]: ['sleeps'],
+      [GarminMetricKindDto.HRV]: ['hrv'],
+      [GarminMetricKindDto.VO2_MAX]: ['userMetrics'],
+      [GarminMetricKindDto.TRAINING_LOAD]: ['userMetrics'],
+    };
+    return mapping[metric];
   }
 
   private async parseDebugBody(response: Response): Promise<unknown> {

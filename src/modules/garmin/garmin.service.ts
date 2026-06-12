@@ -1,14 +1,24 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { GarminAdapter } from './garmin.adapter';
 import { decryptSecret, encryptSecret } from './garmin.crypto';
-import { GarminConnectionStatusDto, GarminManualSyncDto, GarminMetricKindDto } from './garmin.dto';
+import { GarminBackfillRequestDto, GarminBackfillSummaryTypeDto, GarminConnectionStatusDto, GarminManualSyncDto, GarminMetricKindDto } from './garmin.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const GARMIN_PROVIDER = 'garmin';
-const DEFAULT_SYNC_DAYS = 90;
+const DEFAULT_SYNC_DAYS = 1;
+const MAX_MANUAL_SYNC_DAYS = 7;
+const DEFAULT_BACKFILL_DAYS = 365;
+const DEFAULT_MANUAL_SYNC_METRICS = [GarminMetricKindDto.ACTIVITY];
+const DEFAULT_BACKFILL_SUMMARY_TYPES = [
+  GarminBackfillSummaryTypeDto.ACTIVITIES,
+  GarminBackfillSummaryTypeDto.DAILIES,
+  GarminBackfillSummaryTypeDto.SLEEPS,
+  GarminBackfillSummaryTypeDto.HRV,
+  GarminBackfillSummaryTypeDto.USER_METRICS,
+];
 
 interface GarminStatePayload {
   userId: string; // public User.uuid
@@ -153,15 +163,12 @@ export class GarminService {
       throw new NotFoundException('Garmin connection not found or not connected.');
     }
 
+    this.assertNotRateLimited(connection.rateLimitedUntil);
     const to = dto.to ? new Date(dto.to) : new Date();
     const from = dto.from ? new Date(dto.from) : new Date(to.getTime() - DEFAULT_SYNC_DAYS * 24 * 60 * 60 * 1000);
-    if (from > to) {
-      throw new BadRequestException('from must be before to.');
-    }
+    this.assertValidWindow(from, to, MAX_MANUAL_SYNC_DAYS);
 
-    const metrics = dto.metrics?.length
-      ? dto.metrics
-      : [GarminMetricKindDto.HRV, GarminMetricKindDto.SLEEP, GarminMetricKindDto.VO2_MAX, GarminMetricKindDto.ACTIVITY, GarminMetricKindDto.TRAINING_LOAD];
+    const metrics = dto.metrics?.length ? dto.metrics : DEFAULT_MANUAL_SYNC_METRICS;
 
     const syncLog = await this.prisma.garminSyncLog.create({
       data: { userId: user.id, connectionId: connection.id, status: 'RUNNING', startedAt: new Date(), from, to, metricsRequested: metrics },
@@ -204,7 +211,13 @@ export class GarminService {
       });
       await this.prisma.garminConnection.update({
         where: { id: connection.id },
-        data: { status: 'CONNECTED', lastSyncAt: fetchResult.partialFailure ? connection.lastSyncAt : finishedAt, lastError: fetchResult.partialFailure ? fetchResult.diagnostic : null },
+        data: {
+          status: 'CONNECTED',
+          lastSyncAt: fetchResult.partialFailure ? connection.lastSyncAt : finishedAt,
+          lastIncrementalSyncAt: fetchResult.partialFailure ? connection.lastIncrementalSyncAt : finishedAt,
+          rateLimitedUntil: fetchResult.rateLimitedUntil ?? null,
+          lastError: fetchResult.partialFailure ? fetchResult.diagnostic : null,
+        },
       });
 
       return {
@@ -217,6 +230,8 @@ export class GarminService {
         attempts: fetchResult.attempts,
         backfillRequested: fetchResult.backfillRequested ?? false,
         partialFailure: fetchResult.partialFailure ?? false,
+        rateLimited: fetchResult.rateLimited ?? false,
+        rateLimitedUntil: fetchResult.rateLimitedUntil,
         diagnostic: fetchResult.diagnostic,
         lastSyncAt: fetchResult.partialFailure ? connection.lastSyncAt : finishedAt,
       };
@@ -226,6 +241,75 @@ export class GarminService {
       await this.prisma.garminConnection.update({ where: { id: connection.id }, data: { status: 'CONNECTED', lastError: message } });
       throw error;
     }
+  }
+
+
+  async requestBackfill(userId: string, dto: GarminBackfillRequestDto) {
+    this.assertUserId(userId);
+    const user = await this.ensureTemporaryUserForMvp(userId);
+    const connection = await this.prisma.garminConnection.findUnique({ where: { userId_provider: { userId: user.id, provider: GARMIN_PROVIDER } } });
+    if (!connection || connection.status !== 'CONNECTED' || !connection.accessTokenEncrypted) {
+      throw new NotFoundException('Garmin connection not found or not connected.');
+    }
+    this.assertNotRateLimited(connection.rateLimitedUntil);
+
+    const to = dto.to ? new Date(dto.to) : new Date();
+    const from = dto.from ? new Date(dto.from) : new Date(to.getTime() - DEFAULT_BACKFILL_DAYS * 24 * 60 * 60 * 1000);
+    this.assertValidWindow(from, to);
+    const summaryTypes = dto.summaryTypes?.length ? Array.from(new Set(dto.summaryTypes)) : DEFAULT_BACKFILL_SUMMARY_TYPES;
+
+    const accessToken = await this.getUsableAccessToken(connection);
+    const attempts = await this.garminAdapter.requestBackfill(accessToken, { from, to, summaryTypes });
+    const now = new Date();
+    const rateLimitedAttempt = attempts.find((attempt) => this.garminAdapter.isRateLimitedAttempt(attempt));
+    const rateLimitedUntil = rateLimitedAttempt ? this.garminAdapter.resolveRateLimitedUntil() : null;
+
+    for (const summaryType of summaryTypes) {
+      const attempt = attempts.find((item) => item.path === `/backfill/${summaryType}`);
+      const status = attempt ? (attempt.ok ? 'REQUESTED' : this.garminAdapter.isRateLimitedAttempt(attempt) ? 'RATE_LIMITED' : 'ERROR') : 'PENDING';
+      await this.prisma.garminBackfillJob.upsert({
+        where: { connectionId_summaryType_from_to: { connectionId: connection.id, summaryType, from, to } },
+        create: {
+          userId: user.id,
+          connectionId: connection.id,
+          summaryType,
+          from,
+          to,
+          status,
+          attempts: attempt ? 1 : 0,
+          requestedAt: attempt?.ok ? now : null,
+          lastError: attempt && !attempt.ok ? attempt.message ?? null : null,
+        },
+        update: {
+          status,
+          attempts: { increment: attempt ? 1 : 0 },
+          requestedAt: attempt?.ok ? now : undefined,
+          lastError: attempt && !attempt.ok ? attempt.message ?? null : null,
+        },
+      });
+    }
+
+    await this.prisma.garminConnection.update({
+      where: { id: connection.id },
+      data: {
+        historicalBackfillStatus: rateLimitedAttempt ? 'RATE_LIMITED' : attempts.some((attempt) => attempt.ok) ? 'RUNNING' : 'ERROR',
+        historicalBackfillStartedAt: connection.historicalBackfillStartedAt ?? now,
+        rateLimitedUntil,
+        lastError: rateLimitedAttempt?.message ?? (attempts.some((attempt) => attempt.ok) ? null : attempts.find((attempt) => !attempt.ok)?.message ?? 'Garmin backfill request failed.'),
+      },
+    });
+
+    return {
+      provider: GARMIN_PROVIDER,
+      status: rateLimitedAttempt ? 'RATE_LIMITED' : attempts.some((attempt) => attempt.ok) ? 'REQUESTED' : 'ERROR',
+      from,
+      to,
+      summaryTypes,
+      attempts,
+      rateLimited: Boolean(rateLimitedAttempt),
+      rateLimitedUntil,
+      note: 'Garmin historical data is delivered asynchronously through webhook; this endpoint only requests backfill and records per-summary job status.',
+    };
   }
 
   async debugUserPermissions(userId: string) {
@@ -300,10 +384,65 @@ export class GarminService {
         skipDuplicates: true,
       });
       imported += normalized.length;
-      await this.prisma.garminConnection.update({ where: { id: connection.id }, data: { lastSyncAt: new Date(), lastError: null } });
+      const now = new Date();
+      const allBackfillJobsCompleted = await this.markBackfillJobsCompleted(connection.id, summaryType, now);
+      await this.prisma.garminConnection.update({
+        where: { id: connection.id },
+        data: {
+          lastSyncAt: now,
+          lastWebhookAt: now,
+          historicalBackfillStatus: allBackfillJobsCompleted ? 'COMPLETED' : 'RUNNING',
+          historicalBackfillFinishedAt: allBackfillJobsCompleted ? now : undefined,
+          rateLimitedUntil: null,
+          lastError: null,
+        },
+      });
     }
 
     return { provider: GARMIN_PROVIDER, received: records.length, imported, unmatched, summaryType: metricType };
+  }
+
+
+  private assertValidWindow(from: Date, to: Date, maxDays?: number): void {
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException('from/to must be valid ISO dates.');
+    }
+    if (from > to) {
+      throw new BadRequestException('from must be before to.');
+    }
+    if (maxDays) {
+      const days = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
+      if (days > maxDays) {
+        throw new BadRequestException(`Manual Garmin sync window is limited to ${maxDays} days. Use /api/garmin/backfill for historical imports.`);
+      }
+    }
+  }
+
+  private assertNotRateLimited(rateLimitedUntil: Date | null | undefined): void {
+    if (rateLimitedUntil && rateLimitedUntil.getTime() > Date.now()) {
+      throw new HttpException({
+        provider: GARMIN_PROVIDER,
+        error: 'GARMIN_RATE_LIMITED',
+        message: `Garmin quota is temporarily exhausted. Try again after ${rateLimitedUntil.toISOString()}.`,
+        rateLimitedUntil,
+      }, HttpStatus.TOO_MANY_REQUESTS);
+    }
+  }
+
+  private async markBackfillJobsCompleted(connectionId: number, summaryType: string | undefined, completedAt: Date): Promise<boolean> {
+    if (!summaryType) {
+      return false;
+    }
+    const normalized = summaryType.replace(/^\/+|\/+$/g, '');
+    await this.prisma.garminBackfillJob.updateMany({
+      where: { connectionId, summaryType: normalized, status: { in: ['REQUESTED', 'RUNNING', 'PENDING'] } },
+      data: { status: 'COMPLETED', completedAt, lastError: null },
+    });
+    const outstanding = await this.prisma.garminBackfillJob.count({
+      where: { connectionId, status: { in: ['REQUESTED', 'RUNNING', 'PENDING', 'RATE_LIMITED'] } },
+    });
+    const completed = await this.prisma.garminBackfillJob.count({ where: { connectionId, status: 'COMPLETED' } });
+    return completed > 0 && outstanding === 0;
   }
 
   private async getUsableAccessToken(connection: { id: number; accessTokenEncrypted: string | null; refreshTokenEncrypted: string | null; tokenExpiresAt: Date | null }) {
@@ -330,7 +469,7 @@ export class GarminService {
     return refreshed.accessToken;
   }
 
-  private async toStatusWithRecentMetrics(connection: { id: number; status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null; lastError: string | null }): Promise<GarminConnectionStatusDto> {
+  private async toStatusWithRecentMetrics(connection: { id: number; status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null; lastWebhookAt?: Date | null; historicalBackfillStatus?: string | null; rateLimitedUntil?: Date | null; lastError: string | null }): Promise<GarminConnectionStatusDto> {
     const metrics = await this.prisma.garminMetric.findMany({
       where: { connectionId: connection.id },
       orderBy: { measuredAt: 'desc' },
@@ -347,7 +486,7 @@ export class GarminService {
     })) };
   }
 
-  private toStatus(connection: { status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null; lastError?: string | null }): GarminConnectionStatusDto {
+  private toStatus(connection: { status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null; lastWebhookAt?: Date | null; historicalBackfillStatus?: string | null; rateLimitedUntil?: Date | null; lastError?: string | null }): GarminConnectionStatusDto {
     return {
       provider: GARMIN_PROVIDER,
       connected: connection.status === 'CONNECTED',
@@ -357,7 +496,10 @@ export class GarminService {
       connectedAt: connection.connectedAt,
       lastSyncAt: connection.lastSyncAt,
       lastError: connection.lastError,
-    };
+      lastWebhookAt: connection.lastWebhookAt,
+      historicalBackfillStatus: connection.historicalBackfillStatus,
+      rateLimitedUntil: connection.rateLimitedUntil,
+    } as GarminConnectionStatusDto;
   }
 
   private encryptToken(token: string): string {

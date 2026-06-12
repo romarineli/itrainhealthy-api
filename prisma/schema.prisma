@@ -51,6 +51,7 @@ model User {
   garminConnections  GarminConnection[]
   garminSyncLogs     GarminSyncLog[]
   garminMetrics      GarminMetric[]
+  garminBackfillJobs GarminBackfillJob[]
 }
 
 model Profile {
@@ -142,12 +143,19 @@ model GarminConnection {
   scopes                String[]          @default([])
   connectedAt           DateTime?
   lastSyncAt            DateTime?
+  lastIncrementalSyncAt DateTime?
+  lastWebhookAt         DateTime?
+  historicalBackfillStatus String          @default("PENDING")
+  historicalBackfillStartedAt DateTime?
+  historicalBackfillFinishedAt DateTime?
+  rateLimitedUntil      DateTime?
   lastError             String?
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
   user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   syncLogs              GarminSyncLog[]
   metrics               GarminMetric[]
+  backfillJobs          GarminBackfillJob[]
 
   @@unique([userId, provider])
   @@index([status])
@@ -173,6 +181,29 @@ model GarminSyncLog {
   @@index([userId, startedAt])
   @@index([connectionId, startedAt])
   @@index([status])
+}
+
+model GarminBackfillJob {
+  id           Int              @id @default(autoincrement())
+  uuid         String           @unique @default(cuid())
+  userId       Int
+  connectionId Int
+  summaryType  String
+  status       String           @default("PENDING")
+  from         DateTime
+  to           DateTime
+  attempts     Int              @default(0)
+  requestedAt  DateTime?
+  completedAt  DateTime?
+  lastError    String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection   GarminConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, summaryType, from, to])
+  @@index([userId, status])
+  @@index([connectionId, summaryType, status])
 }
 
 model GarminMetric {

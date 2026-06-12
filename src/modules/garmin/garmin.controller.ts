@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../auth/auth.service';
 import { RequestWithUser } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { GarminDisconnectDto, GarminManualSyncDto } from './garmin.dto';
+import { GarminBackfillRequestDto, GarminDisconnectDto, GarminManualSyncDto } from './garmin.dto';
 import { GarminService } from './garmin.service';
 
 interface RedirectResponse {
@@ -95,6 +95,12 @@ export class GarminController {
   @UseGuards(JwtAuthGuard)
   sync(@Req() request: RequestWithUser, @Body() dto: GarminManualSyncDto) {
     return this.garminService.sync(request.user!.id, dto ?? {});
+  }
+
+  @Post('backfill')
+  @UseGuards(JwtAuthGuard)
+  backfill(@Req() request: RequestWithUser, @Body() dto: GarminBackfillRequestDto) {
+    return this.garminService.requestBackfill(request.user!.id, dto ?? {});
   }
 
   @Get('debug/permissions')
