@@ -149,6 +149,16 @@ export class GarminAdapter {
             diagnostic: `Garmin rate limit reached at ${endpoint.path}. Sync stopped early and will not call more endpoints until ${rateLimitedUntil.toISOString()}.`,
           };
         }
+
+        if (this.isInvalidPullTokenAttempt(result.attempt)) {
+          return {
+            metrics: normalized,
+            attempts,
+            backfillRequested: false,
+            partialFailure: true,
+            diagnostic: `Garmin returned InvalidPullTokenException at ${endpoint.path}. This token/app is not valid for synchronous Wellness pull endpoints; do not keep retrying manual sync. Request historical data through /api/garmin/backfill and wait for Garmin webhook delivery.`,
+          };
+        }
       }
     }
 
@@ -253,6 +263,10 @@ export class GarminAdapter {
 
   isRateLimitedAttempt(attempt: Pick<GarminFetchAttempt, 'status' | 'message'>): boolean {
     return attempt.status === 429 || /rate limit|too many request|quota/i.test(attempt.message ?? '');
+  }
+
+  isInvalidPullTokenAttempt(attempt: Pick<GarminFetchAttempt, 'message'>): boolean {
+    return /InvalidPullTokenException|invalid pull token/i.test(attempt.message ?? '');
   }
 
   resolveRateLimitedUntil(): Date {
