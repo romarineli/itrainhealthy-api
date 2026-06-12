@@ -40,6 +40,7 @@ export class GarminConnectionStatusDto {
   lastSyncAt?: Date | null;
   lastWebhookAt?: Date | null;
   historicalBackfillStatus?: string | null;
+  historicalBackfillFinishedAt?: Date | null;
   rateLimitedUntil?: Date | null;
   lastError?: string | null;
   recentMetrics?: GarminMetricSummaryDto[];

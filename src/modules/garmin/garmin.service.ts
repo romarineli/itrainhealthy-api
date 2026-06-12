@@ -251,6 +251,20 @@ export class GarminService {
     if (!connection || connection.status !== 'CONNECTED' || !connection.accessTokenEncrypted) {
       throw new NotFoundException('Garmin connection not found or not connected.');
     }
+    if (connection.historicalBackfillStatus === 'COMPLETED') {
+      return {
+        provider: GARMIN_PROVIDER,
+        status: 'COMPLETED',
+        from: null,
+        to: null,
+        summaryTypes: [],
+        attempts: [],
+        rateLimited: false,
+        rateLimitedUntil: null,
+        historicalBackfillFinishedAt: connection.historicalBackfillFinishedAt,
+        note: 'Garmin historical backfill is already completed for this connection; no new request was sent.',
+      };
+    }
     this.assertNotRateLimited(connection.rateLimitedUntil);
 
     const to = dto.to ? new Date(dto.to) : new Date();
@@ -469,7 +483,7 @@ export class GarminService {
     return refreshed.accessToken;
   }
 
-  private async toStatusWithRecentMetrics(connection: { id: number; status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null; lastWebhookAt?: Date | null; historicalBackfillStatus?: string | null; rateLimitedUntil?: Date | null; lastError: string | null }): Promise<GarminConnectionStatusDto> {
+  private async toStatusWithRecentMetrics(connection: { id: number; status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null; lastWebhookAt?: Date | null; historicalBackfillStatus?: string | null; historicalBackfillFinishedAt?: Date | null; rateLimitedUntil?: Date | null; lastError: string | null }): Promise<GarminConnectionStatusDto> {
     const metrics = await this.prisma.garminMetric.findMany({
       where: { connectionId: connection.id },
       orderBy: { measuredAt: 'desc' },
@@ -486,7 +500,7 @@ export class GarminService {
     })) };
   }
 
-  private toStatus(connection: { status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null; lastWebhookAt?: Date | null; historicalBackfillStatus?: string | null; rateLimitedUntil?: Date | null; lastError?: string | null }): GarminConnectionStatusDto {
+  private toStatus(connection: { status: string; externalUserId: string | null; scopes: string[]; connectedAt: Date | null; lastSyncAt: Date | null; lastWebhookAt?: Date | null; historicalBackfillStatus?: string | null; historicalBackfillFinishedAt?: Date | null; rateLimitedUntil?: Date | null; lastError?: string | null }): GarminConnectionStatusDto {
     return {
       provider: GARMIN_PROVIDER,
       connected: connection.status === 'CONNECTED',
@@ -498,6 +512,7 @@ export class GarminService {
       lastError: connection.lastError,
       lastWebhookAt: connection.lastWebhookAt,
       historicalBackfillStatus: connection.historicalBackfillStatus,
+      historicalBackfillFinishedAt: connection.historicalBackfillFinishedAt,
       rateLimitedUntil: connection.rateLimitedUntil,
     } as GarminConnectionStatusDto;
   }
