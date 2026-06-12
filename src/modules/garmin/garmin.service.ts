@@ -10,15 +10,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 const GARMIN_PROVIDER = 'garmin';
 const DEFAULT_SYNC_DAYS = 1;
 const MAX_MANUAL_SYNC_DAYS = 7;
-const DEFAULT_BACKFILL_DAYS = 365;
+const DEFAULT_BACKFILL_DAYS = 7;
 const DEFAULT_MANUAL_SYNC_METRICS = [GarminMetricKindDto.ACTIVITY];
-const DEFAULT_BACKFILL_SUMMARY_TYPES = [
-  GarminBackfillSummaryTypeDto.ACTIVITIES,
-  GarminBackfillSummaryTypeDto.DAILIES,
-  GarminBackfillSummaryTypeDto.SLEEPS,
-  GarminBackfillSummaryTypeDto.HRV,
-  GarminBackfillSummaryTypeDto.USER_METRICS,
-];
+const DEFAULT_BACKFILL_SUMMARY_TYPES = [GarminBackfillSummaryTypeDto.ACTIVITIES];
 
 interface GarminStatePayload {
   userId: string; // public User.uuid
