@@ -320,9 +320,9 @@ export class GarminAdapter {
     }
 
     const defaults: GarminEndpointCandidate[] = [
+      // Keep manual sync intentionally tiny: one user click should produce one Garmin pull call by default.
+      // Historical/full data import belongs to the explicit backfill endpoint/webhook flow.
       { metric: GarminMetricKindDto.ACTIVITY, path: '/activities' },
-      { metric: GarminMetricKindDto.ACTIVITY, path: '/activityDetails' },
-      { metric: GarminMetricKindDto.ACTIVITY, path: '/dailies' },
       { metric: GarminMetricKindDto.SLEEP, path: '/sleeps' },
       { metric: GarminMetricKindDto.HRV, path: '/hrv' },
       { metric: GarminMetricKindDto.VO2_MAX, path: '/userMetrics' },
