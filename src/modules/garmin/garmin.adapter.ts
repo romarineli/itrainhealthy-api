@@ -277,6 +277,9 @@ export class GarminAdapter {
     if (/InvalidPullTokenException|invalid pull token/i.test(raw)) {
       return 'Garmin InvalidPullTokenException: this token/app cannot use synchronous Wellness pull endpoints; use backfill/webhook flow.';
     }
+    if (/Access denied/i.test(raw) && /HISTORICAL_DATA_EXPORT/i.test(raw)) {
+      return 'Garmin access denied: this app/identifier is missing the HISTORICAL_DATA_EXPORT permission required for historical backfill. Enable/request Historical Data Export in the Garmin Health API portal before retrying /backfill.';
+    }
     return raw.slice(0, 500);
   }
 
