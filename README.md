@@ -104,6 +104,7 @@ Fluxo disponível para teste:
 - Webhooks disponíveis para configurar no portal Garmin: `POST /api/garmin/webhook` ou `POST /api/garmin/webhook/:summaryType` (`activities`, `activityDetails`, `dailies`, `sleeps`, `userMetrics`). Se `GARMIN_WEBHOOK_SECRET` estiver definido, enviar header `x-garmin-webhook-secret`.
 - Dados normalizados recebidos por pull ou webhook são persistidos em `GarminMetric` com `raw`/`summary` para refinamento posterior do mapeamento.
 - `GET /api/garmin/status` retorna `lastSyncAt`, `lastError` e até 5 `recentMetrics` para o dashboard.
+- `GET /api/garmin/debug/permissions` — protegido por Bearer JWT e por `GARMIN_DEBUG_ENABLED=true`; descriptografa o token apenas em memória e consulta `/user/permissions` para diagnosticar permissão/protocolo sem expor credenciais.
 - `GARMIN_SYNC_ENDPOINTS` permite configurar paths exatos liberados no portal quando diferirem do default.
 
 ## Consentimento LGPD MVP
@@ -148,6 +149,7 @@ Variáveis Garmin:
 - `GARMIN_ERROR_REDIRECT_URL` — destino frontend após falha no callback; default derivado de `FRONTEND_URL`/`APP_URL` + `/integrations/garmin/error`.
 - `GARMIN_STATE_SECRET` — segredo interno da aplicação para assinatura de `state` OAuth; não é fornecido pela Garmin.
 - `GARMIN_TOKEN_ENCRYPTION_KEY` — segredo interno da aplicação para criptografar tokens em repouso; não é fornecido pela Garmin e é obrigatório antes de produção.
+- `GARMIN_DEBUG_ENABLED` — habilita endpoint protegido de diagnóstico `GET /api/garmin/debug/permissions`; manter `false` por padrão e ligar temporariamente apenas em dev/hml controlado.
 
 Persistência Prisma criada:
 

@@ -44,6 +44,13 @@ export interface GarminFetchResult {
   diagnostic?: string;
 }
 
+export interface GarminDebugHttpResult {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  body: unknown;
+}
+
 @Injectable()
 export class GarminAdapter {
   private readonly logger = new Logger(GarminAdapter.name);
@@ -152,6 +159,21 @@ export class GarminAdapter {
     return { metrics: normalized, attempts };
   }
 
+  async fetchUserPermissions(accessToken: string): Promise<GarminDebugHttpResult> {
+    this.assertConfigured();
+    const url = this.buildGarminUrl('/user/permissions');
+    const response = await fetch(url, {
+      headers: { accept: 'application/json', authorization: `Bearer ${accessToken}` },
+    });
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      body: await this.parseDebugBody(response),
+    };
+  }
+
   private async fetchEndpoint(accessToken: string, endpoint: GarminEndpointCandidate, window: { from: Date; to: Date }) {
     const url = this.buildGarminUrl(endpoint.path);
     const startSeconds = Math.floor(window.from.getTime() / 1000).toString();
@@ -214,6 +236,15 @@ export class GarminAdapter {
       }
     }
     return attempts;
+  }
+
+  private async parseDebugBody(response: Response): Promise<unknown> {
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      return response.json() as Promise<unknown>;
+    }
+    const text = await response.text();
+    return text.slice(0, 2_000);
   }
 
   private resolveEndpointCandidates(metrics: GarminMetricKindDto[]): GarminEndpointCandidate[] {

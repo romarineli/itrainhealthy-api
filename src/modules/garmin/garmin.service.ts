@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -226,6 +226,35 @@ export class GarminService {
       await this.prisma.garminConnection.update({ where: { id: connection.id }, data: { status: 'CONNECTED', lastError: message } });
       throw error;
     }
+  }
+
+  async debugUserPermissions(userId: string) {
+    if (this.config.get<string>('GARMIN_DEBUG_ENABLED') !== 'true') {
+      throw new ForbiddenException('Garmin debug endpoints are disabled. Set GARMIN_DEBUG_ENABLED=true only in controlled dev/hml environments.');
+    }
+
+    this.assertUserId(userId);
+    const user = await this.ensureTemporaryUserForMvp(userId);
+    const connection = await this.prisma.garminConnection.findUnique({ where: { userId_provider: { userId: user.id, provider: GARMIN_PROVIDER } } });
+    if (!connection || connection.status !== 'CONNECTED' || !connection.accessTokenEncrypted) {
+      throw new NotFoundException('Garmin connection not found or not connected.');
+    }
+
+    const accessToken = await this.getUsableAccessToken(connection);
+    const result = await this.garminAdapter.fetchUserPermissions(accessToken);
+
+    return {
+      provider: GARMIN_PROVIDER,
+      endpoint: '/user/permissions',
+      baseUrl: this.config.get<string>('GARMIN_API_BASE_URL') ?? 'https://apis.garmin.com/wellness-api/rest',
+      connected: true,
+      tokenExpiresAt: connection.tokenExpiresAt,
+      status: result.status,
+      ok: result.ok,
+      statusText: result.statusText,
+      body: result.body,
+      note: 'Debug response is sanitized; Garmin access token is decrypted only in memory and is never returned.',
+    };
   }
 
   async handleWebhook(summaryType: string | undefined, payload: unknown, providedSecret?: string) {

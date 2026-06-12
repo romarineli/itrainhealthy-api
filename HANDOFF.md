@@ -2,7 +2,7 @@
 
 ## Status atual
 - Branch ativa: backend `dev`; frontend `dev`.
-- Última sessão: 2026-06-01
+- Última sessão: 2026-06-12
 - Canal/projeto: `#itrainhealthy` / `channel:1510376273623650384` → iTrain Healthy.
 - Backend/API: `/Users/irene/projects/itrainhealthy-api`.
 - Frontend/Web: `/Users/irene/projects/itrainhealthy`.
@@ -11,6 +11,8 @@
 - Regra operacional GitHub/push corrigida por Rodrigo: o token de GitHub fica no env global, na variável `SANCHO_GITHUB_TOKEN`, e deve ser usado para operações GitHub/push neste projeto via método seguro/temporário, sem expor o valor em logs, remotes, commits ou chat, e sem gravar token no remote.
 
 ## O que foi feito
+- 2026-06-12: Criado endpoint protegido `GET /api/garmin/debug/permissions`, gated por `GARMIN_DEBUG_ENABLED=true`, para diagnosticar `/user/permissions` usando o access token descriptografado apenas em memória, sem retornar o token.
+- 2026-06-12: Adicionado método `GarminAdapter.fetchUserPermissions()` e documentação em `.env.example`/README para o diagnóstico seguro Garmin.
 - Lido o handoff e executado discovery obrigatório com `pwd` + `git status --short --branch` nos repos backend e frontend.
 - Atualizado `/Users/irene/.openclaw/workspace/fullstack/PROJECTS_INDEX.md` com a regra correta de token GitHub no env global `SANCHO_GITHUB_TOKEN`.
 - Atualizado este `HANDOFF.md` para remover a regra antiga de token no `.env` e registrar a regra correta sem expor segredo.
@@ -22,6 +24,8 @@
 - Frontend `dev` enviado para `origin/dev`: `3f1d750..71fd1ec`.
 
 ## Pendente / próximos passos
+- Deployar backend em `dev`/HML com `GARMIN_DEBUG_ENABLED=true` temporariamente e chamar `GET /api/garmin/debug/permissions` com JWT do usuário conectado para verificar se o token real retorna `200`, `401/403` ou erro de protocolo.
+- Depois do diagnóstico, desligar `GARMIN_DEBUG_ENABLED` novamente.
 - Deploy backend e frontend após o push remoto em `origin/dev`, se esse for o fluxo operacional desejado.
 - Em produção, confirmar variável `GARMIN_API_BASE_URL=https://apis.garmin.com/wellness-api/rest`; se estiver explicitamente errada (`https://apis.garmin.com`), precisa ser corrigida fora do código.
 - Retestar `/api/garmin/sync` com conta conectada e confirmar resposta 200 com `PARTIAL_FAILURE`/diagnostic quando Garmin retornar 404 por permissão/configuração.

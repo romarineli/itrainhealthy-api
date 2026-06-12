@@ -97,6 +97,12 @@ export class GarminController {
     return this.garminService.sync(request.user!.id, dto ?? {});
   }
 
+  @Get('debug/permissions')
+  @UseGuards(JwtAuthGuard)
+  debugPermissions(@Req() request: RequestWithUser) {
+    return this.garminService.debugUserPermissions(request.user!.id);
+  }
+
   @Post('webhook')
   webhook(@Body() payload: unknown, @Headers('x-garmin-webhook-secret') secret?: string) {
     return this.garminService.handleWebhook(undefined, payload, secret);
