@@ -409,7 +409,20 @@ export class GarminAdapter {
     if (/^https?:\/\//i.test(path)) {
       return new URL(path);
     }
-    return new URL(path.replace(/^\//, ''), this.baseUrl.replace(/\/$/, '') + '/');
+
+    const base = new URL(this.baseUrl.replace(/\/$/, '') + '/');
+    const basePath = base.pathname.replace(/\/+$/, '');
+    const hasWellnessRestBase = basePath.endsWith('/wellness-api/rest');
+    const cleanPath = path.replace(/^\/+/, '');
+    const wellnessPrefix = 'wellness-api/rest/';
+
+    const normalizedPath = hasWellnessRestBase
+      ? cleanPath.replace(new RegExp(`^${wellnessPrefix}`), '')
+      : cleanPath.startsWith(wellnessPrefix)
+        ? cleanPath
+        : `${wellnessPrefix}${cleanPath}`;
+
+    return new URL(normalizedPath, base.href);
   }
 
   private toBackfillSummaryType(endpoint: GarminEndpointCandidate): string | null {

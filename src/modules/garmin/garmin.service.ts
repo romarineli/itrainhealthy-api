@@ -245,7 +245,7 @@ export class GarminService {
 
     return {
       provider: GARMIN_PROVIDER,
-      endpoint: '/user/permissions',
+      endpoint: '/wellness-api/rest/user/permissions',
       baseUrl: this.config.get<string>('GARMIN_API_BASE_URL') ?? 'https://apis.garmin.com/wellness-api/rest',
       connected: true,
       tokenExpiresAt: connection.tokenExpiresAt,
