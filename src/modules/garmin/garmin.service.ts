@@ -322,7 +322,9 @@ export class GarminService {
       attempts,
       rateLimited: Boolean(rateLimitedAttempt),
       rateLimitedUntil,
-      note: 'Garmin historical data is delivered asynchronously through webhook; this endpoint only requests backfill and records per-summary job status.',
+      note: rateLimitedAttempt
+        ? 'Garmin quota/rate limit was reached. The backend stopped additional Garmin calls and recorded cooldown; wait until rateLimitedUntil before retrying.'
+        : 'Garmin historical data is delivered asynchronously through webhook; this endpoint only requests backfill and records per-summary job status.',
     };
   }
 

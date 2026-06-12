@@ -209,7 +209,7 @@ export class GarminAdapter {
       const body = contentType.includes('application/json') ? ((await response.json()) as unknown) : await response.text();
 
       if (!response.ok) {
-        const message = typeof body === 'string' ? body.slice(0, 200) : JSON.stringify(body).slice(0, 200);
+        const message = this.describeProviderError(body);
         this.logger.warn(`Garmin sync endpoint ${endpoint.path} failed with status ${response.status}: ${message}`);
         return { attempt: { path: endpoint.path, status: response.status, ok: false, message, records: 0 }, metrics: [] };
       }
@@ -241,7 +241,7 @@ export class GarminAdapter {
           path: `/backfill/${summaryType}`,
           status: response.status,
           ok: response.ok,
-          message: response.ok ? 'backfill_requested' : body.slice(0, 500),
+          message: response.ok ? 'backfill_requested' : this.describeProviderError(body),
           records: 0,
         };
         attempts.push(attempt);
@@ -267,6 +267,17 @@ export class GarminAdapter {
 
   isInvalidPullTokenAttempt(attempt: Pick<GarminFetchAttempt, 'message'>): boolean {
     return /InvalidPullTokenException|invalid pull token/i.test(attempt.message ?? '');
+  }
+
+  private describeProviderError(body: unknown): string {
+    const raw = typeof body === 'string' ? body : JSON.stringify(body);
+    if (/Too many request|rate limit|quota/i.test(raw)) {
+      return 'Garmin rate limit/quota exceeded. The backend recorded cooldown and stopped additional Garmin calls; try again after rateLimitedUntil.';
+    }
+    if (/InvalidPullTokenException|invalid pull token/i.test(raw)) {
+      return 'Garmin InvalidPullTokenException: this token/app cannot use synchronous Wellness pull endpoints; use backfill/webhook flow.';
+    }
+    return raw.slice(0, 500);
   }
 
   resolveRateLimitedUntil(): Date {
